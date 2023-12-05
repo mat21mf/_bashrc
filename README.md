@@ -2,5 +2,4 @@
 
 ## Por hacer.
 
-* Crear rama WSL
-* Mantener sincronizadas secciones entre ramas
+* Identificar sistemas operativos, Linux, WSL, etc.
