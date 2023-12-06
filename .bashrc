@@ -56,8 +56,6 @@ if [ -n "$force_color_prompt" ]; then
     fi
 fi
 
-   #PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
-
 if [ "$color_prompt" = yes ]; then
     PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
 else
@@ -93,8 +91,6 @@ fi
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
-alias lt='ls -lt'
-alias lr='ls -ltr'
 
 # Add an "alert" alias for long running commands.  Use like so:
 #   sleep 10; alert
@@ -109,11 +105,6 @@ if [ -f ~/.bash_aliases ]; then
     . ~/.bash_aliases
 fi
 
-# Functions definitions.
-if [ -f ~/.bash_functions ]; then
-    . ~/.bash_functions
-fi
-
 # enable programmable completion features (you don't need to enable
 # this, if it's already enabled in /etc/bash.bashrc and /etc/profile
 # sources /etc/bash.bashrc).
@@ -125,10 +116,14 @@ if ! shopt -oq posix; then
   fi
 fi
 
-
 ###
 ### Definiciones usuario
 ###
+
+# Functions definitions.
+if [ -f ~/.bash_functions ]; then
+    . ~/.bash_functions
+fi
 
 ### editor
 export EDITOR='vim'
@@ -148,6 +143,7 @@ fi
 
 #### Color:
 #### https://unix.stackexchange.com/questions/124407/what-color-codes-can-i-use-in-my-ps1-prompt
+#PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
 #PS1='\[\033[01;38;5;022m\]\u@\H:\[\033[01;38;5;202m\]\W\$\[\033[00m\] '
 #PS1='\[\033[01;38;5;034m\]\u@\H:\[\033[01;38;5;032m\]\W\$\[\033[00m\] '
  PS1='\[\033[01;38;5;036m\]\u@\H:\[\033[01;38;5;033m\]\W\$\[\033[00m\] '
