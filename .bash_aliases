@@ -1,5 +1,9 @@
 # .bash_aliases
 
+# some more ls aliases
+alias lt='ls -lt'
+alias lr='ls -ltr'
+
 ### yt-dlp youtube-dl
 alias yt-dlp="yt-dlp --continue --restrict-filenames -o '%(upload_date)s_%(title)s.%(ext)s'"
 
