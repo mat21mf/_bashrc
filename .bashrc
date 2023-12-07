@@ -180,3 +180,53 @@ fi
 ### Otras
 ###
 
+
+# Docker WSL2
+# https://dev.to/bowmanjd/install-docker-on-windows-wsl-without-docker-desktop-34m9
+# Launch script for dockerd
+if [[ -n "$IS_WSL" || -n "$WSL_DISTRO_NAME" ]]
+then
+  DOCKER_DISTRO="Ubuntu"
+  DOCKER_DIR=/mnt/wsl/shared-docker
+  DOCKER_SOCK="$DOCKER_DIR/docker.sock"
+  export DOCKER_HOST="unix://$DOCKER_SOCK"
+  if [ ! -S "$DOCKER_SOCK" ]; then
+      mkdir -pm o=,ug=rwx "$DOCKER_DIR"
+      chgrp docker "$DOCKER_DIR"
+      /mnt/c/Windows/System32/wsl.exe -d $DOCKER_DISTRO sh -c "nohup sudo -b dockerd < /dev/null > $DOCKER_DIR/dockerd.log 2>&1"
+  fi
+fi
+
+
+# added by Anaconda3 5.3.1 installer
+# >>> conda init >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$(CONDA_REPORT_ERRORS=false '/home/$USER/.anaconda3/bin/conda' shell.bash hook 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    \eval "$__conda_setup"
+else
+    if [ -f "/home/$USER/.anaconda3/etc/profile.d/conda.sh" ]; then
+# . "/home/$USER/.anaconda3/etc/profile.d/conda.sh"  # commented out by conda initialize
+        CONDA_CHANGEPS1=false conda activate base
+    else
+        \export PATH="/home/$USER/.anaconda3/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+# <<< conda init <<<
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/home/$USER/.anaconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/home/$USER/.anaconda3/etc/profile.d/conda.sh" ]; then
+        . "/home/$USER/.anaconda3/etc/profile.d/conda.sh"
+    else
+        export PATH="/home/$USER/.anaconda3/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+# <<< conda initialize <<<
+
