@@ -56,17 +56,32 @@ if [ -n "$force_color_prompt" ]; then
     fi
 fi
 
-if [ "$color_prompt" = yes ]; then
-    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+if [[ -n "$IS_WSL" || -n "$WSL_DISTRO_NAME" ]]
+then
+  if [ "$color_prompt" = yes ]; then
+      # PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+      PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]: \[\033[01;34m\]\W \[\e[91m\]$(__git_ps1 "(%s)")\[\033[00m\]$ '
+  else
+      # PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+      PS1='${debian_chroot:+($debian_chroot)}\u@\h: \W\$ '
+  fi
 else
-    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+  parse_git_branch() {
+       git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
+  }
+  if [ "$color_prompt" = yes ]; then
+      PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\W \$(parse_git_branch)\[\033[00m\]\$ '
+  else
+      PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+  fi
 fi
 unset color_prompt force_color_prompt
 
 # If this is an xterm set the title to user@host:dir
 case "$TERM" in
 xterm*|rxvt*)
-    PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
+    # PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
+    PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \W\]$PS1"
     ;;
 *)
     ;;
@@ -128,8 +143,13 @@ fi
 ### editor
 export EDITOR='vim'
 
-### Idioma
-export LANG=es_CL.UTF-8
+# ### Idioma
+if [[ -n "$IS_WSL" || -n "$WSL_DISTRO_NAME" ]]
+then
+  export LANG=C.UTF-8
+else
+  export LANG=es_CL.UTF-8
+fi
 
 # mappings for Ctrl-left-arrow and Ctrl-right-arrow for word moving
 if [ -t 1 ] ; then
