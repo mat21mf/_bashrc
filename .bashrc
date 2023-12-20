@@ -66,7 +66,7 @@ then
       PS1='${debian_chroot:+($debian_chroot)}\u@\h: \W\$ '
   fi
 fi
-if [[ "$OSTYPE" == "linux-gnu" && grep -qiv microsoft /proc/version ]]
+if [[ "$OSTYPE" == "linux-gnu" && `grep -qiv microsoft /proc/version` ]]
 then
   parse_git_branch() {
        git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
@@ -150,7 +150,8 @@ if grep -qi microsoft /proc/version
 then
   export LANG=C.UTF-8
 fi
-if [[ "$OSTYPE" == "linux-gnu" && grep -qiv microsoft /proc/version ]]
+if [[ "$OSTYPE" == "linux-gnu" && `grep -qiv microsoft /proc/version` ]]
+then
   export LANG=es_CL.UTF-8
 fi
 
