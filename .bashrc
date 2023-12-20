@@ -56,7 +56,7 @@ if [ -n "$force_color_prompt" ]; then
     fi
 fi
 
-if [[ -n "$IS_WSL" || -n "$WSL_DISTRO_NAME" ]]
+if grep -qi microsoft /proc/version
 then
   if [ "$color_prompt" = yes ]; then
       # PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
@@ -65,7 +65,9 @@ then
       # PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
       PS1='${debian_chroot:+($debian_chroot)}\u@\h: \W\$ '
   fi
-else
+fi
+if [[ "$OSTYPE" == "linux-gnu" && grep -qiv microsoft /proc/version ]]
+then
   parse_git_branch() {
        git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
   }
@@ -144,10 +146,11 @@ fi
 export EDITOR='vim'
 
 # ### Idioma
-if [[ -n "$IS_WSL" || -n "$WSL_DISTRO_NAME" ]]
+if grep -qi microsoft /proc/version
 then
   export LANG=C.UTF-8
-else
+fi
+if [[ "$OSTYPE" == "linux-gnu" && grep -qiv microsoft /proc/version ]]
   export LANG=es_CL.UTF-8
 fi
 
@@ -191,7 +194,7 @@ export LESS='-iMSx4 -RSFX -e'
 export OPENSSL_CONF=/usr/include/nodejs/openssl.cnf
 
 ### timezone wsl2
-if [[ -n "$IS_WSL" || -n "$WSL_DISTRO_NAME" ]]
+if grep -qi microsoft /proc/version
 then
   export TZ='America/Santiago'
 fi
@@ -204,7 +207,7 @@ fi
 # Docker WSL2
 # https://dev.to/bowmanjd/install-docker-on-windows-wsl-without-docker-desktop-34m9
 # Launch script for dockerd
-if [[ -n "$IS_WSL" || -n "$WSL_DISTRO_NAME" ]]
+if grep -qi microsoft /proc/version
 then
   DOCKER_DISTRO="Ubuntu"
   DOCKER_DIR=/mnt/wsl/shared-docker
