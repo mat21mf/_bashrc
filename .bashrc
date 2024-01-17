@@ -254,3 +254,11 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
+
+## nodejs
+if [[ ! -d ~/.npm-global ]] ; then mkdir ~/.npm-global ; fi
+export NPM_CONFIG_PREFIX=~/.npm-global
+export PATH="$PATH:/home/$USER/.npm-global/bin"
+
+## geoserver
+export GEOSERVER_HOME=/usr/share/geoserver
