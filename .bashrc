@@ -262,3 +262,6 @@ export PATH="$PATH:/home/$USER/.npm-global/bin"
 
 ## geoserver
 export GEOSERVER_HOME=/usr/share/geoserver
+
+## airflow
+export PATH="$PATH:~/.local/bin"
