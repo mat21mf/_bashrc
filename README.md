@@ -24,6 +24,7 @@ ln -s $PWD/.bash_functions ~/.bash_functions
 ~/.bin/sortgs.py
 ~/.bin/CsvARds.R
 ~/.bin/XlsxAParquet.R
+~/.bin/XlsxARds.R
 ~/.bin/GetDims.R
 ~/.bin/val_repl.py
 ~/.bin/CsvAParquet.R
