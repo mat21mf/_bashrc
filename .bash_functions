@@ -103,6 +103,16 @@
   }
   export -f XlsxAParquet
 
+  function XlsxARds ()
+  {
+    if [[ "${3}" == "" ]] ; then
+      R --vanilla --slave --args "${1}" "${2}" < $HOME/.bin/XlsxARds.R
+    else
+      R --vanilla --slave --args "${1}" "${2}" "${3}" < $HOME/.bin/XlsxARds.R
+    fi
+  }
+  export -f XlsxARds
+
   function ParquetAXlsx ()
   {
     if [[ "${3}" == "" ]] ; then
