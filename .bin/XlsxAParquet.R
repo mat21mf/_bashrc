@@ -26,7 +26,7 @@ XlsxAParquet <- function( strxls , strsht , strout ) {
   if( strsht == "" ) {
     objdfm <- setDT( read.xlsx( strxls ) )
   } else {
-    objdfm <- setDT( read.xlsx( strxls , sheet = strsht ) )
+    objdfm <- setDT( read.xlsx( strxls , sheet = as.integer(strsht) ) )
   }
   write_parquet( objdfm , strout , compression = "brotli" , compression_level = 11 )
 
