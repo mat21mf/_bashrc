@@ -36,6 +36,9 @@ alias ffprobe='ffprobe "$@" 2>&1'
 ### kubectl
 alias kubectl="minikube kubectl --"
 
+### minio client mc
+alias mc="~/minio-binaries/mc"
+
 ###
 ### Radios
 ###
