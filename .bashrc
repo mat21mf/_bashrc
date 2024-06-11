@@ -56,28 +56,35 @@ if [ -n "$force_color_prompt" ]; then
     fi
 fi
 
-if grep -qi microsoft /proc/version
-then
-  if [ "$color_prompt" = yes ]; then
-      # PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
-      PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]: \[\033[01;34m\]\W \[\e[91m\]$(__git_ps1 "(%s)")\[\033[00m\]$ '
-  else
-      # PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
-      PS1='${debian_chroot:+($debian_chroot)}\u@\h: \W\$ '
-  fi
-fi
-if [[ "$OSTYPE" == "linux-gnu" && `grep -qiv microsoft /proc/version` ]]
-then
-  parse_git_branch() {
-       git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
-  }
-  if [ "$color_prompt" = yes ]; then
-      PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\W \$(parse_git_branch)\[\033[00m\]\$ '
-  else
-      PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
-  fi
+if [ "$color_prompt" = yes ]; then
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\] \W \[\e[91m\]$(__git_ps1 "(%s)")\[\033[00m\]\$ '
+else
+    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
 fi
 unset color_prompt force_color_prompt
+
+# if grep -qi microsoft /proc/version
+# then
+#   if [ "$color_prompt" = yes ]; then
+#       # PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+#       PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]: \[\033[01;34m\]\W \[\e[91m\]$(__git_ps1 "(%s)")\[\033[00m\]$ '
+#   else
+#       # PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+#       PS1='${debian_chroot:+($debian_chroot)}\u@\h: \W\$ '
+#   fi
+# fi
+# if [[ "$OSTYPE" == "linux-gnu" && `grep -qiv microsoft /proc/version` ]]
+# then
+#   parse_git_branch() {
+#        git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
+#   }
+#   if [ "$color_prompt" = yes ]; then
+#       PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\W \$(parse_git_branch)\[\033[00m\]\$ '
+#   else
+#       PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+#   fi
+# fi
+# unset color_prompt force_color_prompt
 
 # If this is an xterm set the title to user@host:dir
 case "$TERM" in
@@ -204,6 +211,11 @@ fi
 ### Otras
 ###
 
+
+## pyenv
+export PYENV_ROOT="$HOME/.pyenv"
+command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
 
 # Docker WSL2
 # https://dev.to/bowmanjd/install-docker-on-windows-wsl-without-docker-desktop-34m9
