@@ -414,22 +414,71 @@
   }
   export -f RespaldarEnRedTest
 
-  function RenombrarEspacios () {
-    find "${1}" -maxdepth 1 -type f | \
-      grep -e ' ' -e ')' -e '(' -e '%20' -e '%28' -e '%29' -e '%2C' -e ':' | \
-      sed -r 's/(.*)/mv "\1"\t\1/
-              :a
-              s/\t(.*) /\t\1_/g
-              s/\t(.*)\)/\t\1_/g
-              s/\t(.*)\(/\t\1_/g
-              s/\t(.*)%20/\t\1_/g
-              s/\t(.*)%28/\t\1_/g
-              s/\t(.*)%29/\t\1_/g
-              s/\t(.*)%2C/\t\1_/g
-              s/\t(.*)\&/\t\1_/g
-              s|\t(.*):|\t\1_|g
-              ta' | \
-      bash
+  function RenombrarEspaciosPreview() {
+    local dir="${1:-.}"
+    find "$dir" -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
+      local base="$(basename "$file")"
+      local dirn="$(dirname "$file")"
+      local newname="$base"
+      newname="$(echo "$newname" | sed 's/[[:space:]]\+/_/g')"
+      newname="$(echo "$newname" | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null)"
+      newname="$(echo "$newname" | sed 's/[^A-Za-z0-9._-]/_/g')"
+      newname="$(printf '%s' "$newname" | tr '\n\r' '_')"
+      if [[ "$newname" != "$base" ]]; then
+        echo "mv -- '$file' '$dirn/$newname'"
+      fi
+    done
+  }
+  export -f RenombrarEspaciosPreview
+
+  function RenombrarEspacios() {
+    local dir="${1:-.}"
+
+    find "$dir" -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
+      # Extract basename and directory
+      local base="$(basename "$file")"
+      local dirn="$(dirname "$file")"
+
+      # Create local variable newname
+      local newname="$base"
+
+      # Replace literal newlines and carriage returns with underscores first
+      newname="$(printf '%s' "$newname" | tr '\n\r' '_')"
+
+      # Replace problematic characters with underscores
+      newname="$(echo "$newname" | sed \
+        -e 's/[[:space:]]\+/_/g' \
+        -e 's/[()]/_/g' \
+        -e 's/%20/_/g' \
+        -e 's/%28/_/g' \
+        -e 's/%29/_/g' \
+        -e 's/%2C/_/g' \
+        -e 's/&/_/g' \
+        -e 's/:/_/g' \
+        -e "s/'/_/g" \
+        -e 's/"/_/g' \
+        -e 's/,/_/g' \
+        -e 's/__*/_/g' \
+      )"
+
+      # Remove accents
+      newname="$(echo "$newname" | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null)"
+
+      # Replace any remaining non-ASCII characters
+      newname="$(echo "$newname" | sed 's/[^A-Za-z0-9._-]/_/g')"
+
+      # Collapse multiple underscores
+      newname="$(echo "$newname" | sed 's/__*/_/g')"
+
+      # Trim leading/trailing underscores
+      newname="$(echo "$newname" | sed 's/^_//; s/_$//')"
+
+      # Rename if the filename changed
+      if [[ "$newname" != "$base" ]]; then
+        echo "Renombrando: '$base' → '$newname'"
+        mv -n -- "$file" "$dirn/$newname"
+      fi
+    done
   }
   export -f RenombrarEspacios
 
