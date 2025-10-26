@@ -768,3 +768,13 @@
 # }
 # export -f MagnetToTorrent
 
+  function vdiff () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    jq -c 'paths' "$1" > "$f1"
+    jq -c 'paths' "$2" > "$f2"
+    vimdiff "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f vdiff
