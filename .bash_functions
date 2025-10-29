@@ -768,7 +768,7 @@
 # }
 # export -f MagnetToTorrent
 
-  function vdiff () {
+  function vdiff_paths () {
     local f1 f2
     f1=$(mktemp)
     f2=$(mktemp)
@@ -777,4 +777,15 @@
     vimdiff "$f1" "$f2"
     rm "$f1" "$f2"
   }
-  export -f vdiff
+  export -f vdiff_paths
+
+  function vdiff_variable_entry () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    jq -c 'paths' "$1" | awk -F',' '/variable_entry/ {if(NF==2) print $0}' > "$f1"
+    jq -c 'paths' "$2" | awk -F',' '/variable_entry/ {if(NF==2) print $0}' > "$f2"
+    vimdiff "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f vdiff_variable_entry
