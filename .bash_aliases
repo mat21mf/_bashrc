@@ -1,5 +1,8 @@
 # .bash_aliases
 
+# source ~/.bashrc
+alias so='echo "source ~/.bashrc" && source ~/.bashrc'
+
 # some more ls aliases
 alias lt='ls -lt'
 alias lr='ls -ltr'
