@@ -768,6 +768,82 @@
 # }
 # export -f MagnetToTorrent
 
+  function sort_json_values () {
+    jq '
+      with_entries(
+        .value |= (
+          # Only operate on the component object (ifs, lpjg, ...)
+          if type == "object" then
+            with_entries(
+              .value |= (if type == "array" then sort else . end)
+            )
+          else
+            .
+          end
+        )
+      )
+    ' ${1}
+  }
+  export -f sort_json_values
+
+  function path_variable_compact () {
+    jq -c 'paths(scalars) as $p | select(getpath($p[:-1]) | type == "array") | ($p[:-1] + [getpath($p)])' ${1}
+  }
+  export -f path_variable_compact
+
+  function path_variable_duplicates_per_component () {
+    jq '
+      [
+        paths(scalars) as $p
+        | select(getpath($p[:-1]) | type == "array")
+        | {component: $p[0], table: $p[1], var: getpath($p)}
+      ]
+      | group_by(.component)
+      | map({
+          component: .[0].component,
+          duplicates:
+            (group_by(.var)
+             | map(select(length > 1))
+             | map({var: .[0].var, tables: map(.table)}))
+          })
+      | map(select(.duplicates | length > 0))
+    ' "${1}"
+  }
+  export -f path_variable_duplicates_per_component
+
+  function vdiff_entities_varlist () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    sort_json_values ${1} | jq ${3} > "$f1"
+    sort_json_values ${2} | jq ${3} > "$f2"
+    vimdiff "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f vdiff_entities_varlist
+
+  function vdiff_varlist_paths () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    sort_json_values ${1} | jq -c 'paths(scalars) as $p | select(getpath($p[:-1]) | type == "array") | ($p[:-1] + [getpath($p)])' ${3} > "$f1"
+    sort_json_values ${2} | jq -c 'paths(scalars) as $p | select(getpath($p[:-1]) | type == "array") | ($p[:-1] + [getpath($p)])' ${3} > "$f2"
+    vimdiff "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f vdiff_varlist_paths
+
+  function vdiff_basic () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    jq '.' "$1" > "$f1"
+    jq '.' "$2" > "$f2"
+    vimdiff "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f vdiff_basic
+
   function vdiff_paths () {
     local f1 f2
     f1=$(mktemp)
@@ -779,13 +855,165 @@
   }
   export -f vdiff_paths
 
-  function vdiff_variable_entry () {
+  function diff_paths () {
+    diff -s --color \
+      <(jq -c 'paths' "$1") \
+      <(jq -c 'paths' "$2")
+  }
+  export -f diff_paths
+
+  function diff_path_variable_entry () {
     local f1 f2
     f1=$(mktemp)
     f2=$(mktemp)
-    jq -c 'paths' "$1" | awk -F',' '/variable_entry/ {if(NF==2) print $0}' > "$f1"
-    jq -c 'paths' "$2" | awk -F',' '/variable_entry/ {if(NF==2) print $0}' > "$f2"
+    jq -c 'paths' "$1" | awk -F',' '/variable_entry/ {if(NF==2) print $0}' | sort > "$f1"
+    jq -c 'paths' "$2" | awk -F',' '/variable_entry/ {if(NF==2) print $0}' | sort > "$f2"
+    diff -s --color "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f diff_path_variable_entry
+
+  function vdiff_path_variable_entry () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    jq -c 'paths' "$1" | awk -F',' '/variable_entry/ {if(NF==2) print $0}' | sort > "$f1"
+    jq -c 'paths' "$2" | awk -F',' '/variable_entry/ {if(NF==2) print $0}' | sort > "$f2"
     vimdiff "$f1" "$f2"
     rm "$f1" "$f2"
   }
-  export -f vdiff_variable_entry
+  export -f vdiff_path_variable_entry
+
+  function diff_jq_variable_entry () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    jq '.variable_entry | to_entries | sort_by(.key) | from_entries' "$1" > "$f1"
+    jq '.variable_entry | to_entries | sort_by(.key) | from_entries' "$2" > "$f2"
+    diff -s --color "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f diff_jq_variable_entry
+
+  function vdiff_jq_variable_entry () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    jq '.variable_entry | to_entries | sort_by(.key) | from_entries' "$1" > "$f1"
+    jq '.variable_entry | to_entries | sort_by(.key) | from_entries' "$2" > "$f2"
+    vimdiff "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f vdiff_jq_variable_entry
+
+  function vdiff_varlist_count () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    jq -c 'paths' "$1" | awk -F',' '{gsub(/\[|\]/,"",$0); if(NF==3) print $0}' | cut -d',' -f1,2 | sort | uniq -c | sed -r 's/,/ /' | sort -k2,2 -k1,1 > "$f1"
+    jq -c 'paths' "$2" | awk -F',' '{gsub(/\[|\]/,"",$0); if(NF==3) print $0}' | cut -d',' -f1,2 | sort | uniq -c | sed -r 's/,/ /' | sort -k2,2 -k1,1 > "$f2"
+    vimdiff "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f vdiff_varlist_count
+
+compare_varlists() {
+    # Compare two varlist JSON files with alphabetical sorting
+    # Usage: compare_varlists file1.json file2.json [--vimdiff]
+
+    local use_vimdiff=false
+    local file1=""
+    local file2=""
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --vimdiff|-v)
+                use_vimdiff=true
+                shift
+                ;;
+            *)
+                if [ -z "$file1" ]; then
+                    file1="$1"
+                elif [ -z "$file2" ]; then
+                    file2="$1"
+                else
+                    echo "Error: Too many arguments"
+                    echo "Usage: compare_varlists file1.json file2.json [--vimdiff]"
+                    return 1
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    if [ -z "$file1" ] || [ -z "$file2" ]; then
+        echo "Usage: compare_varlists file1.json file2.json [--vimdiff]"
+        return 1
+    fi
+
+    if [ ! -f "$file1" ]; then
+        echo "Error: $file1 not found"
+        return 1
+    fi
+
+    if [ ! -f "$file2" ]; then
+        echo "Error: $file2 not found"
+        return 1
+    fi
+
+    # Create temp sorted files
+    local temp1=$(mktemp --suffix=.json)
+    local temp2=$(mktemp --suffix=.json)
+
+    # Sort both files using Python
+    python3 -c "
+import json
+import sys
+from collections import OrderedDict
+
+def sort_varlist(filename):
+    with open(filename, 'r') as f:
+        data = json.load(f)
+
+    sorted_data = OrderedDict()
+    for component in sorted(data.keys()):
+        sorted_data[component] = OrderedDict()
+        for table in sorted(data[component].keys()):
+            sorted_data[component][table] = sorted(data[component][table])
+
+    return sorted_data
+
+sorted1 = sort_varlist('$file1')
+sorted2 = sort_varlist('$file2')
+
+with open('$temp1', 'w') as f:
+    json.dump(sorted1, f, indent=4)
+    f.write('\n')
+
+with open('$temp2', 'w') as f:
+    json.dump(sorted2, f, indent=4)
+    f.write('\n')
+"
+
+    # Compare the sorted files
+    echo "Comparing (both sorted alphabetically):"
+    echo "  $file1"
+    echo "  $file2"
+    echo ""
+
+    if [ "$use_vimdiff" = true ]; then
+        # Open vimdiff
+        vimdiff "$temp1" "$temp2"
+        # After vimdiff closes, show diff summary
+        echo ""
+        echo "Summary of differences:"
+        diff -u --color=always "$temp1" "$temp2" | head -50 || true
+    else
+        # Just show diff
+        diff -u --color=always "$temp1" "$temp2" || true
+    fi
+
+    # Cleanup
+    rm -f "$temp1" "$temp2"
+}
