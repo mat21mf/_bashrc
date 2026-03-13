@@ -8,10 +8,18 @@ case $- in
       *) return;;
 esac
 
+#----------------------------------------------------------
+# HISTORY settings
+#----------------------------------------------------------
+
+# for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
+HISTSIZE=100000
+HISTFILESIZE=200000
+
 # don't put duplicate lines or lines starting with space in the history.
 # See bash(1) for more options
-HISTCONTROL=ignoreboth
-HISTIGNORE="history:ls:pwd:"
+HISTCONTROL=ignoredups:erasedups
+HISTTIMEFORMAT="%F %T "
 
 # append to the history file, don't overwrite it
 shopt -s histappend
@@ -20,14 +28,10 @@ shopt -s histappend
 shopt -s cmdhist
 
 # Don't save certain commands to history
-export HISTIGNORE="ls:ll:cd:pwd:bg:fg:history"
-
-# for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
-HISTSIZE=5000
-HISTFILESIZE=10000
+HISTIGNORE="ls:ll:cd:pwd:bg:fg:history"
 
 # record history
-PROMPT_COMMAND='history -a'
+PROMPT_COMMAND="history -a;history -n"
 
 # check the window size after each command and, if necessary,
 # update the values of LINES and COLUMNS.
@@ -36,6 +40,10 @@ shopt -s checkwinsize
 # If set, the pattern "**" used in a pathname expansion context will
 # match all files and zero or more directories and subdirectories.
 #shopt -s globstar
+
+#----------------------------------------------------------
+# Other settings
+#----------------------------------------------------------
 
 # make less more friendly for non-text input files, see lesspipe(1)
 [ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
