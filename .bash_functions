@@ -769,7 +769,7 @@
 # export -f MagnetToTorrent
 
   function sort_json_values () {
-    jq '
+    jq -M '
       with_entries(
         .value |= (
           # Only operate on the component object (ifs, lpjg, ...)
@@ -815,30 +815,52 @@
     local f1 f2
     f1=$(mktemp)
     f2=$(mktemp)
-    sort_json_values ${1} | jq ${3} > "$f1"
-    sort_json_values ${2} | jq ${3} > "$f2"
+    sort_json_values ${1} | jq -M '.' > "$f1"
+    sort_json_values ${2} | jq -M '.' > "$f2"
     vimdiff "$f1" "$f2"
     rm "$f1" "$f2"
   }
   export -f vdiff_entities_varlist
 
+  function diff_entities_varlist () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    sort_json_values ${1} | jq -M '.' > "$f1"
+    sort_json_values ${2} | jq -M '.' > "$f2"
+    diff -s --color "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f diff_entities_varlist
+
   function vdiff_varlist_paths () {
     local f1 f2
     f1=$(mktemp)
     f2=$(mktemp)
-    sort_json_values ${1} | jq -c 'paths(scalars) as $p | select(getpath($p[:-1]) | type == "array") | ($p[:-1] + [getpath($p)])' ${3} > "$f1"
-    sort_json_values ${2} | jq -c 'paths(scalars) as $p | select(getpath($p[:-1]) | type == "array") | ($p[:-1] + [getpath($p)])' ${3} > "$f2"
+    sort_json_values ${1} | jq -M -c 'paths(scalars) as $p | select(getpath($p[:-1]) | type == "array") | ($p[:-1] + [getpath($p)])' ${3} > "$f1"
+    sort_json_values ${2} | jq -M -c 'paths(scalars) as $p | select(getpath($p[:-1]) | type == "array") | ($p[:-1] + [getpath($p)])' ${3} > "$f2"
     vimdiff "$f1" "$f2"
     rm "$f1" "$f2"
   }
   export -f vdiff_varlist_paths
 
+  function diff_varlist_paths () {
+    local f1 f2
+    f1=$(mktemp)
+    f2=$(mktemp)
+    sort_json_values ${1} | jq -M -c 'paths(scalars) as $p | select(getpath($p[:-1]) | type == "array") | ($p[:-1] + [getpath($p)])' ${3} > "$f1"
+    sort_json_values ${2} | jq -M -c 'paths(scalars) as $p | select(getpath($p[:-1]) | type == "array") | ($p[:-1] + [getpath($p)])' ${3} > "$f2"
+    diff -s --color "$f1" "$f2"
+    rm "$f1" "$f2"
+  }
+  export -f diff_varlist_paths
+
   function vdiff_basic () {
     local f1 f2
     f1=$(mktemp)
     f2=$(mktemp)
-    jq '.' "$1" > "$f1"
-    jq '.' "$2" > "$f2"
+    jq -M '.' "$1" > "$f1"
+    jq -M '.' "$2" > "$f2"
     vimdiff "$f1" "$f2"
     rm "$f1" "$f2"
   }
