@@ -502,6 +502,15 @@
   }
   export -f RenombrarTimestamps
 
+  # After a `git pull`/commit in this repo, offer to apply the files that
+  # changed recently to where they're actually deployed on this machine
+  # (default $HOME) - .bashrc -> $HOME/.bashrc, .local/bin/foo -> $HOME/.local/bin/foo,
+  # following the repo's own layout as the mapping. Run from inside the repo.
+  function SincronizarDespliegue() {
+    python3 "$HOME/.local/bin/deploy_sync.py" "$@"
+  }
+  export -f SincronizarDespliegue
+
   function PostRenombrar () {
     find "${1}" -maxdepth 1 -type f -name '*%2C*' | \
       sed -r 's/(.*)/mv \1\t\1/
