@@ -1,7 +1,10 @@
-# .bash_aliases
+# ~/.bash_aliases
 
 # source ~/.bashrc
 alias so='echo "source ~/.bashrc" && source ~/.bashrc'
+
+# curl
+alias curl='curl -sSL'
 
 # some more ls aliases
 alias lt='ls -lt'
@@ -13,10 +16,16 @@ alias yt-dlp="yt-dlp --continue --restrict-filenames -o '%(upload_date)s_%(title
 ### tmuxinator
 alias mux=tmuxinator
 
+### ffprobe
+alias ffprobe='ffprobe "$@" 2>&1'
+
 #### copiar y mover
 alias cp="cp --preserve=all"
 alias rsync="rsync -t --progress"
 alias rsync_mv="rsync --archive --remove-source-files"
+
+#### jq
+alias jq='jq -C'
 
 ### pdflatex
 PDFLATEX="pdflatex --shell-escape"
@@ -32,9 +41,6 @@ alias pdfsizeopt='pdfsizeopt --use-pngout=no --use-jbig2=true --do-unify-fonts=f
 ### youtube-dl
 alias youtube-dl="youtube-dl --continue --restrict-filenames -o '%(upload_date)s_%(title)s.%(ext)s'"
 alias yt-dlp="yt-dlp --continue --restrict-filenames -o '%(upload_date)s_%(title)s.%(ext)s'"
-
-### ffprobe
-alias ffprobe='ffprobe "$@" 2>&1'
 
 ### kubectl
 alias kubectl="minikube kubectl --"
