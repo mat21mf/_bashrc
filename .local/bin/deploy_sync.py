@@ -14,6 +14,11 @@ and so on - no separate mapping config needed, the repo layout IS the map.
 Usage:
   ./deploy_sync.py [--since REF] [--all] [--root PATH] [options]
 
+Deploy root resolution (highest priority first): --root on the command
+line, then a .deploysyncroot file at the repo root (single line, a path,
+"~" is expanded - e.g. a vim-config repo whose real deploy root is
+"~/.vim" rather than "$HOME"), then $HOME as the final default.
+
 Modes (pick one, default is the first):
   (default)   Only files changed since the last time this tool completed a
               full pass in this repo. That pointer is stored locally in
@@ -190,7 +195,10 @@ def main() -> int:
     )
     parser.add_argument("--since", default=None, help="Diff since this ref instead of stored state")
     parser.add_argument("--all", action="store_true", help="Diff every tracked file, ignore stored state")
-    parser.add_argument("--root", default=str(Path.home()), type=Path, help="Deploy root (default: $HOME)")
+    parser.add_argument(
+        "--root", default=None, type=Path,
+        help="Deploy root. Default: this repo's .deploysyncroot file if present, else $HOME",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("-y", "--yes", action="store_true")
     parser.add_argument("--no-backup", action="store_true")
@@ -200,6 +208,15 @@ def main() -> int:
 
     repo_root = find_repo_root(Path.cwd())
     head = run_git(repo_root, "rev-parse", "HEAD").strip()
+
+    if args.root is not None:
+        dest_root = args.root.expanduser()
+    else:
+        root_file = repo_root / ".deploysyncroot"
+        if root_file.is_file():
+            dest_root = Path(root_file.read_text().strip()).expanduser()
+        else:
+            dest_root = Path.home()
 
     if args.all:
         since_ref = None
@@ -212,7 +229,6 @@ def main() -> int:
     globs = load_ignore_globs(repo_root, args.include_meta, args.exclude)
     rels = [r for r in rels if not is_ignored(r, globs)]
 
-    dest_root: Path = args.root
     pending = []  # (rel, src_path, dest_path, is_new)
     up_to_date = 0
     for rel in sorted(rels):
