@@ -792,7 +792,7 @@
   export -f path_variable_compact
 
   function path_variable_duplicates_per_component () {
-    jq '
+    jq -M '
       [
         paths(scalars) as $p
         | select(getpath($p[:-1]) | type == "array")
@@ -1039,3 +1039,110 @@ with open('$temp2', 'w') as f:
     # Cleanup
     rm -f "$temp1" "$temp2"
 }
+
+  # Woffu to Trs
+  function csvToJsonCompact () {
+    qsv select 1,${2} ${1} | \
+    sed -r 's/^.* ([[:digit:]]{2})\/([[:digit:]]{2})\/([[:digit:]]{4})/\3-\2\-\1/' | \
+    awk 'BEGIN{FS=OFS=","}
+    NR==1 {print $0; next}
+    {
+      gsub(/[a-z]/,"",$2)
+      if($2 ~ /^[0-9]+ [0-9]+$/) {
+        split($2, t, " ")
+        $2 = sprintf("%.2f", t[1] + t[2]/60)
+      } else if($2 ~ /^[0-9]+[ ]*$/) {
+        $2 = sprintf("%.2f", $2)
+      }
+      if($2 != "") print $0
+    }' | \
+    python3 -c "import csv, json, sys; r = list(csv.reader(sys.stdin)); print(json.dumps([{'date': row[0], 'hours': float(row[1])} for row in r[1:]], separators=(',',':')))"
+  }
+  export -f csvToJsonCompact
+
+  function dump_nc_variables () {
+    ncdump -h "${1}" | rg '\(.*\) ;' | sed -r 's/.* (.*)\(.*/\1/' | paste -d' ' -s
+  }
+  export -f dump_nc_variables
+
+  function vimrepl() {
+      # Not inside tmux → start tmux session first
+      if [ -z "$TMUX" ]; then
+          tmux new-session -d -s vimrepl -n editor
+          tmux split-window -v -t vimrepl
+          tmux select-pane -t 1
+          tmux send-keys -t 1 "vim \"$@\" -c 'norm ,va'" C-m
+          tmux attach -t vimrepl
+          return
+      fi
+
+      # Inside tmux
+      panes=$(tmux list-panes | wc -l)
+
+      if [ "$panes" -eq 1 ]; then
+          tmux split-window -h
+      fi
+
+      vim "$@" -c "norm ,va"
+  }
+  export -f vimrepl
+
+  function file_sizes_without_full_path() {
+      # xargs reads from stdin (the pipe) and passes it to the rest of the chain
+      xargs ls -ltr | awk '{print $5"/"$9}' | awk -F'/' '{print $1,$NF}' | sort | uniq -c
+  }
+  export -f file_sizes_without_full_path
+
+  # Usage: replace_special_chars <file> [--dry-run]
+  replace_special_chars() {
+    local file="$1"
+    local dry_run="${2:-}"
+
+    if [[ ! -f "$file" ]]; then
+      echo "File not found: $file" >&2
+      return 1
+    fi
+
+    # Map of special char -> ASCII replacement.
+    # Edit this table as you discover more characters.
+    declare -A charmap=(
+      ["—"]=" - "      # em dash (U+2014)
+      ["–"]="-"        # en dash (U+2013)
+      ["─"]="-"        # box drawing horizontal (U+2500)
+      ["→"]="->"       # rightwards arrow (U+2192)
+      ["…"]="..."      # ellipsis (U+2026)
+      ["✓"]="[OK]"     # check mark (U+2713)
+      ["✗"]="[FAIL]"   # ballot X (U+2717)
+      ["’"]="'"        # right single quote (U+2019)
+      ["“"]='"'        # left double quote (U+201C)
+      ["”"]='"'        # right double quote (U+201D)
+    )
+
+    echo "== $file =="
+    local found=0
+    for char in "${!charmap[@]}"; do
+      local count
+      count=$(grep -o "$char" "$file" 2>/dev/null | wc -l)
+      if [[ "$count" -gt 0 ]]; then
+        found=1
+        printf '  %-3s -> %-8s  (%d occurrences)\n' "$char" "${charmap[$char]}" "$count"
+      fi
+    done
+
+    if [[ "$found" -eq 0 ]]; then
+      echo "  (no mapped special characters found)"
+      return 0
+    fi
+
+    if [[ "$dry_run" == "--dry-run" ]]; then
+      echo "  [dry run, no changes made]"
+      return 0
+    fi
+
+    cp "$file" "$file.bak"
+    for char in "${!charmap[@]}"; do
+      sed -i "s/$char/${charmap[$char]}/g" "$file"
+    done
+    echo "  done. backup saved to $file.bak"
+  }
+  export -f replace_special_chars
