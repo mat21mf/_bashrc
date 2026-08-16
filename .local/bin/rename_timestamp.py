@@ -39,11 +39,19 @@ Notes:
     would produce the exact filename the file already has, nothing is
     written/renamed - the script just reports that the file is already
     correctly stamped. This is the common "ran it twice by habit" case.
+  - --no-exec strips the executable bits from the destination after a copy
+    (mode is otherwise unchanged: still preserved by copy2, this just
+    clears u+x/g+x/o+x afterwards). Meant for stamping backups of scripts
+    that live in a PATH directory (e.g. ~/.local/bin) - an executable
+    backup sitting there is a stray, runnable near-duplicate of the real
+    command. Has no effect in --move mode (the file keeps whatever
+    permissions it already had; there's no duplicate to worry about).
 """
 
 import argparse
 import re
 import shutil
+import stat
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -78,6 +86,11 @@ def main() -> int:
         "--dry-run",
         action="store_true",
         help="Print what would happen without copying/renaming anything",
+    )
+    parser.add_argument(
+        "--no-exec",
+        action="store_true",
+        help="Strip executable bits from the copy (ignored with --move)",
     )
     args = parser.parse_args()
 
@@ -114,6 +127,9 @@ def main() -> int:
         verb = "Would copy" if args.dry_run else "Copied"
         if not args.dry_run:
             shutil.copy2(src, dest)
+            if args.no_exec:
+                mode = dest.stat().st_mode
+                dest.chmod(mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
         print(f"{verb} to: {dest}")
 
     return 0

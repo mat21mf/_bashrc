@@ -66,6 +66,7 @@ quitting does not, so a quit run re-offers everything again next time.
 import argparse
 import filecmp
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -123,7 +124,7 @@ def find_backup_tool(repo_root: Path) -> str | None:
 def backup_file(dest_file: Path, tool: str | None) -> str:
     if tool:
         result = subprocess.run(
-            [sys.executable, tool, str(dest_file)],
+            [sys.executable, tool, str(dest_file), "--no-exec"],
             capture_output=True, text=True,
         )
         if result.returncode == 0:
@@ -131,6 +132,11 @@ def backup_file(dest_file: Path, tool: str | None) -> str:
         return f"backup skipped ({result.stderr.strip() or result.stdout.strip()})"
     fallback = dest_file.with_name(f"{dest_file.name}.bak.{int(time.time())}")
     shutil.copy2(dest_file, fallback)
+    # Plain fallback: strip exec bits too, for the same reason
+    # rename_timestamp.py is asked to via --no-exec - a backup sitting in a
+    # PATH directory (e.g. ~/.local/bin) shouldn't itself be runnable.
+    mode = fallback.stat().st_mode
+    fallback.chmod(mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
     return f"Backed up to: {fallback} (rename_timestamp.py not found, used plain fallback)"
 
 
