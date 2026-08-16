@@ -482,6 +482,26 @@
   }
   export -f RenombrarEspacios
 
+  function RenombrarTimestampsPreview() {
+    local dir="${1:-.}"
+    find "$dir" -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
+      python3 "$HOME/.local/bin/rename_timestamp.py" "$file" --move --dry-run
+    done
+  }
+  export -f RenombrarTimestampsPreview
+
+  # Same spirit as RenombrarEspacios (sanitize names in a dir), but stamps
+  # every file in the dir with its own mtime instead, via rename_timestamp.py
+  # --move. Safe to re-run: already-correctly-stamped files are reported and
+  # left untouched, nothing stacks.
+  function RenombrarTimestamps() {
+    local dir="${1:-.}"
+    find "$dir" -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
+      python3 "$HOME/.local/bin/rename_timestamp.py" "$file" --move
+    done
+  }
+  export -f RenombrarTimestamps
+
   function PostRenombrar () {
     find "${1}" -maxdepth 1 -type f -name '*%2C*' | \
       sed -r 's/(.*)/mv \1\t\1/
