@@ -482,22 +482,42 @@
   }
   export -f RenombrarEspacios
 
+  # Same spirit as RenombrarEspacios (sanitize names in a dir), but stamps
+  # every file in the dir with its own mtime instead, via rename_timestamp.py.
+  # Copies by default (matches rename_timestamp.py's own default - source
+  # files are left untouched); pass --move to rename in place instead.
+  # Usage: RenombrarTimestampsPreview [dir] [--move]
   function RenombrarTimestampsPreview() {
-    local dir="${1:-.}"
+    local dir="."
+    local move=""
+    for arg in "$@"; do
+      case "$arg" in
+        --move) move="--move" ;;
+        *) dir="$arg" ;;
+      esac
+    done
     find "$dir" -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
-      python3 "$HOME/.local/bin/rename_timestamp.py" "$file" --move --dry-run
+      python3 "$HOME/.local/bin/rename_timestamp.py" "$file" $move --dry-run
     done
   }
   export -f RenombrarTimestampsPreview
 
-  # Same spirit as RenombrarEspacios (sanitize names in a dir), but stamps
-  # every file in the dir with its own mtime instead, via rename_timestamp.py
-  # --move. Safe to re-run: already-correctly-stamped files are reported and
-  # left untouched, nothing stacks.
+  # Copies by default (matches rename_timestamp.py's own default - source
+  # files are left untouched); pass --move to rename in place instead.
+  # Safe to re-run: already-correctly-stamped files are reported and left
+  # untouched, nothing stacks.
+  # Usage: RenombrarTimestamps [dir] [--move]
   function RenombrarTimestamps() {
-    local dir="${1:-.}"
+    local dir="."
+    local move=""
+    for arg in "$@"; do
+      case "$arg" in
+        --move) move="--move" ;;
+        *) dir="$arg" ;;
+      esac
+    done
     find "$dir" -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
-      python3 "$HOME/.local/bin/rename_timestamp.py" "$file" --move
+      python3 "$HOME/.local/bin/rename_timestamp.py" "$file" $move
     done
   }
   export -f RenombrarTimestamps
