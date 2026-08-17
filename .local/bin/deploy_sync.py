@@ -15,27 +15,47 @@ Usage:
   ./deploy_sync.py [--since REF] [--root PATH] [options]
 
 Deploy root resolution (highest priority first): --root on the command
-line, then a .deploysyncroot file at the repo root (single line, a path,
-"~" is expanded - e.g. a vim-config repo whose real deploy root is
-"~/.vim" rather than "$HOME"), then $HOME as the final default.
+line, then .deploysyncroot at the repo root, then $HOME as the final
+default.
 
-Every run compares every git-tracked, non-ignored file's actual content
-against its deployed counterpart - not commit history. A file is
-"pending" for exactly as long as its content differs from what's
+.deploysyncroot has two line forms, freely mixed:
+  PATH              A default root for anything not covered by a rule
+                     below. "~" is expanded. This is the whole file for
+                     the simple case (e.g. a vim-config repo whose real
+                     root is "~/.vim" instead of "$HOME") - one line, no
+                     "=", exactly the original format, unchanged.
+  PREFIX=PATH       Scope PATH to only the subtree at PREFIX (a directory
+                     relative to the repo root). Files under PREFIX get
+                     PREFIX stripped before joining onto PATH - so
+                     "tools/=~/.local/bin" deploys "tools/foo.py" to
+                     "~/.local/bin/foo.py", not "~/.local/bin/tools/foo.py".
+                     More specific (longer) prefixes win over shorter
+                     ones regardless of line order.
+If the file has PREFIX= rules but no bare default line, anything outside
+every listed prefix is simply out of scope - not deployed anywhere, not
+counted as pending or up to date, and doesn't need a .deploysyncignore
+entry to be kept out. This suits a repo that mixes a deployable tools/
+subtree with large non-deployable data alongside it: point .deploysyncroot
+at just "tools/=~/.local/bin" and the rest of the repo is automatically
+left alone.
+
+Every git-tracked, non-ignored, in-scope file's actual content is compared
+against its deployed counterpart on every run - not commit history. A
+file is "pending" for exactly as long as its content differs from what's
 deployed, full stop. Answering [n] to skip it just means "not this run" -
 it stays pending and gets offered again next time, and the time after
 that, until you either apply it or add it to .deploysyncignore. There is
 no memory of past skip decisions and nothing advances silently; the only
-way a file stops being offered is if its content actually matches, or you
-choose to ignore it.
+way a file stops being offered is if its content actually matches, it's
+out of scope per .deploysyncroot, or you choose to ignore it.
 
   --since REF   Optional extra narrowing: only consider files touched by
                 a commit since REF (any commit/tag/branch), in addition
                 to the content-diff check above. Rarely needed - mostly
                 useful on a very large repo where you specifically want
                 to review only this week's commits, say. Leave it off and
-                every tracked file gets checked; already-matching ones
-                are silently counted as up to date and never shown.
+                every in-scope tracked file gets checked; already-matching
+                ones are silently counted as up to date and never shown.
 
 Only git-tracked files are considered (git ls-files), and repo bookkeeping
 files are skipped by default: README*, LICENSE*, CHANGELOG*, .gitattributes,
@@ -102,6 +122,53 @@ def find_repo_root(start: Path) -> Path:
         print(f"Not inside a git repo: {start}", file=sys.stderr)
         sys.exit(1)
     return Path(result.stdout.strip())
+
+
+def load_root_rules(repo_root: Path, cli_root: Path | None) -> tuple[list[tuple[str, Path]], Path | None]:
+    """Returns (prefix_rules, default_root).
+    prefix_rules: [(prefix_without_trailing_slash, root_path), ...] sorted
+    longest-prefix-first, so a more specific rule always wins regardless
+    of the order it was written in.
+    default_root: the bare-line root for anything not matched by a
+    prefix rule, or None if the file only has PREFIX= rules (meaning
+    anything unmatched is out of scope, not deployed anywhere).
+    --root on the CLI overrides everything: no prefix rules, just that
+    single default root, same as before this feature existed.
+    """
+    if cli_root is not None:
+        return [], cli_root.expanduser()
+
+    root_file = repo_root / ".deploysyncroot"
+    if not root_file.is_file():
+        return [], Path.home()
+
+    prefix_rules: list[tuple[str, Path]] = []
+    default_root: Path | None = None
+    for line in root_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            prefix, root = line.split("=", 1)
+            prefix = prefix.strip().rstrip("/")
+            prefix_rules.append((prefix, Path(root.strip()).expanduser()))
+        else:
+            default_root = Path(line).expanduser()
+
+    prefix_rules.sort(key=lambda pr: len(pr[0]), reverse=True)
+    return prefix_rules, default_root
+
+
+def resolve_dest(rel: str, prefix_rules: list[tuple[str, Path]], default_root: Path | None) -> Path | None:
+    """Returns the deploy path for rel, or None if it's out of scope
+    (no rule covers it, and there's no default root)."""
+    for prefix, root in prefix_rules:
+        if rel == prefix or rel.startswith(prefix + "/"):
+            sub = rel[len(prefix):].lstrip("/")
+            return root / sub if sub else root
+    if default_root is not None:
+        return default_root / rel
+    return None
 
 
 def find_backup_tool(repo_root: Path) -> str | None:
@@ -206,15 +273,7 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = find_repo_root(Path.cwd())
-
-    if args.root is not None:
-        dest_root = args.root.expanduser()
-    else:
-        root_file = repo_root / ".deploysyncroot"
-        if root_file.is_file():
-            dest_root = Path(root_file.read_text().strip()).expanduser()
-        else:
-            dest_root = Path.home()
+    prefix_rules, default_root = load_root_rules(repo_root, args.root)
 
     rels = candidate_files(repo_root, args.since)
     globs = load_ignore_globs(repo_root, args.include_meta, args.exclude)
@@ -222,11 +281,15 @@ def main() -> int:
 
     pending = []  # (rel, src_path, dest_path, is_new)
     up_to_date = 0
+    out_of_scope = 0
     for rel in sorted(rels):
+        dest_path = resolve_dest(rel, prefix_rules, default_root)
+        if dest_path is None:
+            out_of_scope += 1
+            continue
         src_path = repo_root / rel
         if not src_path.is_file():
             continue  # deleted in a diff range, nothing to deploy
-        dest_path = dest_root / rel
         if dest_path.exists() and filecmp.cmp(src_path, dest_path, shallow=False):
             up_to_date += 1
             continue
@@ -234,9 +297,18 @@ def main() -> int:
 
     scope = "all tracked files" if args.since is None else f"tracked files changed since {args.since}"
     print(f"Repo: {repo_root}")
-    print(f"Deploy root: {dest_root}")
+    if prefix_rules:
+        for prefix, root in prefix_rules:
+            print(f"Deploy root: {prefix}/ -> {root}")
+        if default_root is not None:
+            print(f"Deploy root: (everything else) -> {default_root}")
+        else:
+            print("Deploy root: (everything else is out of scope)")
+    else:
+        print(f"Deploy root: {default_root}")
     print(f"Scope: {scope}")
-    print(f"  {len(pending)} pending, {up_to_date} already up to date\n")
+    extra = f", {out_of_scope} out of scope" if out_of_scope else ""
+    print(f"  {len(pending)} pending, {up_to_date} already up to date{extra}\n")
 
     if not pending:
         print("Nothing to apply.")
