@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-deploy_sync.py - after pulling/committing changes in this repo, offer to
-apply the files that changed recently to where they're actually deployed
-on this machine.
+deploy_sync.py - apply this repo's tracked files, whose content differs
+from what's currently deployed, to where they're actually deployed on
+this machine.
 
 This relies on the convention this repo already documents in its own
 README ("cp -p -u .bashrc ~/.bashrc", etc.): a tracked file's path
@@ -12,24 +12,30 @@ root (default $HOME). So .bashrc -> $HOME/.bashrc,
 and so on - no separate mapping config needed, the repo layout IS the map.
 
 Usage:
-  ./deploy_sync.py [--since REF] [--all] [--root PATH] [options]
+  ./deploy_sync.py [--since REF] [--root PATH] [options]
 
 Deploy root resolution (highest priority first): --root on the command
 line, then a .deploysyncroot file at the repo root (single line, a path,
 "~" is expanded - e.g. a vim-config repo whose real deploy root is
 "~/.vim" rather than "$HOME"), then $HOME as the final default.
 
-Modes (pick one, default is the first):
-  (default)   Only files changed since the last time this tool completed a
-              full pass in this repo. That pointer is stored locally in
-              .git/deploy-sync-state (inside .git, so it's automatically
-              untracked/machine-local, never pushed or pulled). First run
-              with no state yet behaves like --all.
-  --since REF Diff tracked files changed since REF (any commit/tag/branch)
-              instead of the stored pointer.
-  --all       Ignore stored state; diff every tracked file in the repo
-              against its deployed counterpart. Useful on a brand new
-              machine, or to force a full re-check.
+Every run compares every git-tracked, non-ignored file's actual content
+against its deployed counterpart - not commit history. A file is
+"pending" for exactly as long as its content differs from what's
+deployed, full stop. Answering [n] to skip it just means "not this run" -
+it stays pending and gets offered again next time, and the time after
+that, until you either apply it or add it to .deploysyncignore. There is
+no memory of past skip decisions and nothing advances silently; the only
+way a file stops being offered is if its content actually matches, or you
+choose to ignore it.
+
+  --since REF   Optional extra narrowing: only consider files touched by
+                a commit since REF (any commit/tag/branch), in addition
+                to the content-diff check above. Rarely needed - mostly
+                useful on a very large repo where you specifically want
+                to review only this week's commits, say. Leave it off and
+                every tracked file gets checked; already-matching ones
+                are silently counted as up to date and never shown.
 
 Only git-tracked files are considered (git ls-files), and repo bookkeeping
 files are skipped by default: README*, LICENSE*, CHANGELOG*, .gitattributes,
@@ -38,15 +44,14 @@ files are skipped by default: README*, LICENSE*, CHANGELOG*, .gitattributes,
 relative to repo root) at the repo root for per-repo customization.
 
 Options:
-  --dry-run     List what would be reviewed, apply/prompt nothing, and
-                don't move the stored state pointer
+  --dry-run     List what would be reviewed, apply/prompt nothing
   -y, --yes     Apply every pending file without prompting
   --no-backup   Don't back up a deployed file before overwriting it
   --exclude PAT Extra glob to skip, repeatable
 
 For each pending file you get a colored unified diff against the deployed
 copy and a prompt:
-  [y] apply this one   [n] skip it   [d] show diff again
+  [y] apply this one   [n] skip it (offered again next run)   [d] show diff again
   [a] apply this and everything remaining   [q] quit, nothing further applied
 
 Before overwriting a file that's already deployed, its current content is
@@ -56,11 +61,10 @@ mtime-stamped naming convention already used elsewhere in this repo
 (e.g. via RenombrarTimestamps); that's an opportunistic convenience, not a
 hard dependency - if it's not available, a plain ".bak.<epoch>" copy is
 made instead so a backup always happens unless --no-backup is passed.
-
-The stored state pointer only advances to HEAD if the run reaches the end
-without being stopped via [q]. Answering [n] to skip a file still lets the
-pointer advance (skipping is a deliberate decision, not "come back later");
-quitting does not, so a quit run re-offers everything again next time.
+Either way, the backup's executable bits are stripped (rename_timestamp.py
+via --no-exec, or a manual chmod in the plain-fallback case) - a runnable
+duplicate of a live command sitting in a PATH directory is a hazard, not
+a convenience.
 """
 
 import argparse
@@ -69,7 +73,6 @@ import shutil
 import stat
 import subprocess
 import sys
-import time
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -101,19 +104,6 @@ def find_repo_root(start: Path) -> Path:
     return Path(result.stdout.strip())
 
 
-def state_path(repo_root: Path) -> Path:
-    return repo_root / ".git" / "deploy-sync-state"
-
-
-def read_state(repo_root: Path) -> str | None:
-    p = state_path(repo_root)
-    return p.read_text().strip() if p.is_file() else None
-
-
-def write_state(repo_root: Path, sha: str) -> None:
-    state_path(repo_root).write_text(sha + "\n")
-
-
 def find_backup_tool(repo_root: Path) -> str | None:
     here = repo_root / ".local" / "bin" / "rename_timestamp.py"
     if here.is_file():
@@ -130,6 +120,7 @@ def backup_file(dest_file: Path, tool: str | None) -> str:
         if result.returncode == 0:
             return result.stdout.strip()
         return f"backup skipped ({result.stderr.strip() or result.stdout.strip()})"
+    import time
     fallback = dest_file.with_name(f"{dest_file.name}.bak.{int(time.time())}")
     shutil.copy2(dest_file, fallback)
     # Plain fallback: strip exec bits too, for the same reason
@@ -157,7 +148,10 @@ def is_ignored(rel: str, globs: list[str]) -> bool:
 
 
 def candidate_files(repo_root: Path, since_ref: str | None) -> list[str]:
-    """Repo-relative paths (posix) of tracked files to consider."""
+    """Repo-relative paths (posix) of tracked files to consider. Content
+    comparison against the deployed copy (done by the caller) is what
+    actually decides pending-ness; --since here is only an optional extra
+    narrowing of which tracked files even get considered."""
     if since_ref is None:
         out = run_git(repo_root, "ls-files")
     else:
@@ -197,10 +191,9 @@ def prompt(rel: str, is_new: bool) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Apply this repo's recently changed tracked files to where they're deployed on this machine."
+        description="Apply this repo's tracked files, whose content differs, to where they're deployed on this machine."
     )
-    parser.add_argument("--since", default=None, help="Diff since this ref instead of stored state")
-    parser.add_argument("--all", action="store_true", help="Diff every tracked file, ignore stored state")
+    parser.add_argument("--since", default=None, help="Only consider files touched by a commit since this ref")
     parser.add_argument(
         "--root", default=None, type=Path,
         help="Deploy root. Default: this repo's .deploysyncroot file if present, else $HOME",
@@ -213,7 +206,6 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = find_repo_root(Path.cwd())
-    head = run_git(repo_root, "rev-parse", "HEAD").strip()
 
     if args.root is not None:
         dest_root = args.root.expanduser()
@@ -224,14 +216,7 @@ def main() -> int:
         else:
             dest_root = Path.home()
 
-    if args.all:
-        since_ref = None
-    elif args.since:
-        since_ref = args.since
-    else:
-        since_ref = read_state(repo_root)  # None on first-ever run -> full scan
-
-    rels = candidate_files(repo_root, since_ref)
+    rels = candidate_files(repo_root, args.since)
     globs = load_ignore_globs(repo_root, args.include_meta, args.exclude)
     rels = [r for r in rels if not is_ignored(r, globs)]
 
@@ -247,7 +232,7 @@ def main() -> int:
             continue
         pending.append((rel, src_path, dest_path, not dest_path.exists()))
 
-    scope = "all tracked files" if since_ref is None else f"changes since {since_ref[:12]}"
+    scope = "all tracked files" if args.since is None else f"tracked files changed since {args.since}"
     print(f"Repo: {repo_root}")
     print(f"Deploy root: {dest_root}")
     print(f"Scope: {scope}")
@@ -255,22 +240,22 @@ def main() -> int:
 
     if not pending:
         print("Nothing to apply.")
-        if not args.dry_run and not args.all:
-            write_state(repo_root, head)
         return 0
 
     if args.dry_run:
         for rel, _src, _dest, is_new in pending:
             print(f"[{'NEW' if is_new else 'CHANGED'}] {rel}")
-        print("\n(dry run - nothing applied, state not updated)")
+        print("\n(dry run - nothing applied)")
         return 0
 
     tool = None if args.no_backup else find_backup_tool(repo_root)
     if not args.no_backup and tool is None:
         print("Note: rename_timestamp.py not found; using plain .bak.<epoch> backups instead.\n")
 
+    self_path = Path(__file__).resolve()
+    self_updated = False
+
     apply_all = args.yes
-    quit_early = False
     for rel, src_path, dest_path, is_new in pending:
         if not apply_all:
             show_diff(dest_path, src_path)
@@ -279,18 +264,28 @@ def main() -> int:
                 show_diff(dest_path, src_path)
                 choice = prompt(rel, is_new)
             if choice == "q":
-                print("Stopping, no further changes applied. State not advanced.")
-                quit_early = True
+                print("Stopping, no further changes applied.")
                 break
             if choice == "a":
                 apply_all = True
             elif choice != "y":
-                print(f"  Skipped: {rel}")
+                print(f"  Skipped: {rel} (will be offered again next run)")
                 continue
         apply_change(src_path, dest_path, tool, do_backup=not args.no_backup)
+        if dest_path.resolve() == self_path:
+            self_updated = True
 
-    if not quit_early:
-        write_state(repo_root, head)
+    if self_updated:
+        print(
+            "\nNote: deploy_sync.py just updated its own deployed copy. This run "
+            "kept using the version that was already loaded in memory the whole "
+            "way through (a running script can't hot-reload itself), so anything "
+            "behavior-related in that update - not file content, which is already "
+            "correct - only takes effect starting with the next run. If this "
+            "update changed how backups are made, run this command again once "
+            "more so any remaining pending files get the new behavior; a backup "
+            "made during *this* run may still reflect the old behavior."
+        )
 
     return 0
 
