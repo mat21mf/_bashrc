@@ -87,6 +87,8 @@ duplicate of a live command sitting in a PATH directory is a hazard, not
 a convenience.
 """
 
+from __future__ import annotations
+
 import argparse
 import filecmp
 import shutil
