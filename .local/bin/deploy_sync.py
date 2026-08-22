@@ -85,6 +85,15 @@ Either way, the backup's executable bits are stripped (rename_timestamp.py
 via --no-exec, or a manual chmod in the plain-fallback case) - a runnable
 duplicate of a live command sitting in a PATH directory is a hazard, not
 a convenience.
+
+After every apply, the deployed file is checked for a shebang line; if
+present, the executable bits are set regardless of the source file's own
+tracked permissions. shutil.copy2() (used for the actual copy) mirrors
+the source's mode bits exactly, so a script whose exec bit was never set
+in git - or got lost along the way - would otherwise deploy as
+non-executable despite clearly being meant to run directly. This check
+doesn't depend on the source repo getting its file modes right; it runs
+on every applied file, every time.
 """
 
 from __future__ import annotations
@@ -235,6 +244,30 @@ def show_diff(dest_path: Path, src_path: Path):
         print(f"(not currently deployed - would create {dest_path}, {src_path.stat().st_size} bytes)")
 
 
+def ensure_executable(dest_path: Path):
+    """After deploying a file, make sure it's runnable if it looks like a
+    script - independent of whatever mode the source happened to be
+    tracked with in git. Backs up the copy2()-based approach above: copy2
+    faithfully mirrors the source's permission bits, so a script that was
+    committed as 100644 (exec bit never set, or lost somewhere along the
+    way) would otherwise silently deploy as non-executable even though it
+    has a shebang and lives in a PATH directory. This check runs every
+    time, regardless of what the source's tracked mode was, so it's a
+    standing guarantee rather than a one-off fix for today's files."""
+    try:
+        with dest_path.open("rb") as f:
+            starts_with_shebang = f.read(2) == b"#!"
+    except OSError:
+        return
+    if not starts_with_shebang:
+        return
+    mode = dest_path.stat().st_mode
+    new_mode = mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    if new_mode != mode:
+        dest_path.chmod(new_mode)
+        print(f"    chmod +x (shebang detected, source lacked exec bit)")
+
+
 def apply_change(src_path: Path, dest_path: Path, tool: str | None, do_backup: bool):
     if dest_path.exists():
         if do_backup:
@@ -245,6 +278,7 @@ def apply_change(src_path: Path, dest_path: Path, tool: str | None, do_backup: b
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_path, dest_path)
         print(f"  Applied (new): {dest_path}")
+    ensure_executable(dest_path)
 
 
 def prompt(rel: str, is_new: bool) -> str:
