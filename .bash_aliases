@@ -10,6 +10,12 @@ alias curl='curl -sSL'
 alias lt='ls -lt'
 alias lr='ls -ltr'
 
+#### jq
+alias jq='jq -C'
+
+#### less
+export LESS='-R'
+
 ### yt-dlp youtube-dl
 alias yt-dlp="yt-dlp --continue --restrict-filenames -o '%(upload_date)s_%(title)s.%(ext)s'"
 
@@ -23,9 +29,6 @@ alias ffprobe='ffprobe "$@" 2>&1'
 alias cp="cp --preserve=all"
 alias rsync="rsync -t --progress"
 alias rsync_mv="rsync --archive --remove-source-files"
-
-#### jq
-alias jq='jq -C'
 
 ### pdflatex
 PDFLATEX="pdflatex --shell-escape"
