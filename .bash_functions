@@ -1196,7 +1196,9 @@ with open('$temp2', 'w') as f:
   }
   export -f replace_special_chars
 
-  # lint gitlab ci pipeline file in gitlab.earth.bsc.es
+  # validate a .gitlab-ci.yml against the GitLab CI Lint API without
+  # triggering a real pipeline. Checks YAML/schema correctness only --
+  # does not run any job. Set GITLAB_HOST/GITLAB_TOKEN first.
   gitlab_lint() {
       local yaml_file="${1:-.gitlab-ci.yml}"
       local project_id="${2:?usage: gitlab_lint <path-to-yaml> <project-id>}"
@@ -1212,3 +1214,97 @@ with open('$temp2', 'w') as f:
         | jq .
   }
   export -f gitlab_lint
+
+  # list recent CI pipelines for a project, optionally filtered by ref
+  # (branch/tag name). Shows id/ref/status/created_at/web_url only --
+  # follow up with gitlab_pipeline_jobs <project-id> <pipeline-id> to
+  # see individual job status. Set GITLAB_HOST/GITLAB_TOKEN first.
+  gitlab_pipelines() {
+      local project_id="${1:?usage: gitlab_pipelines <project-id> [ref]}"
+      local ref="${2:-}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      local url="https://${GITLAB_HOST}/api/v4/projects/${project_id}/pipelines?per_page=10"
+      [[ -n "$ref" ]] && url="${url}&ref=${ref}"
+
+      curl --silent --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "$url" \
+        | jq '[.[] | {id, ref, status, created_at, web_url}]'
+  }
+  export -f gitlab_pipelines
+
+  # list jobs (with status) for a given pipeline id -- use to find the
+  # job id of a failed job before calling gitlab_job_trace on it. Set
+  # GITLAB_HOST/GITLAB_TOKEN first.
+  gitlab_pipeline_jobs() {
+      local project_id="${1:?usage: gitlab_pipeline_jobs <project-id> <pipeline-id>}"
+      local pipeline_id="${2:?usage: gitlab_pipeline_jobs <project-id> <pipeline-id>}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      curl --silent --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+           "https://${GITLAB_HOST}/api/v4/projects/${project_id}/pipelines/${pipeline_id}/jobs" \
+        | jq '[.[] | {id, name, stage, status}]'
+  }
+  export -f gitlab_pipeline_jobs
+
+  # fetch the raw log (trace) for a single CI job id -- plain text, not
+  # JSON, printed as-is. Set GITLAB_HOST/GITLAB_TOKEN first.
+  gitlab_job_trace() {
+      local project_id="${1:?usage: gitlab_job_trace <project-id> <job-id>}"
+      local job_id="${2:?usage: gitlab_job_trace <project-id> <job-id>}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      curl --silent --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+           "https://${GITLAB_HOST}/api/v4/projects/${project_id}/jobs/${job_id}/trace"
+  }
+  export -f gitlab_job_trace
+
+  # convenience wrapper: find the most recent pipeline (optionally for
+  # a given ref) and dump the trace of every failed job in it, so you
+  # don't have to chain gitlab_pipelines -> gitlab_pipeline_jobs ->
+  # gitlab_job_trace by hand for the common "why did it just fail"
+  # case. Set GITLAB_HOST/GITLAB_TOKEN first.
+  gitlab_last_failure() {
+      local project_id="${1:?usage: gitlab_last_failure <project-id> [ref]}"
+      local ref="${2:-}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      local url="https://${GITLAB_HOST}/api/v4/projects/${project_id}/pipelines?per_page=1"
+      [[ -n "$ref" ]] && url="${url}&ref=${ref}"
+
+      local pipeline_id
+      pipeline_id=$(curl --silent --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "$url" | jq -r '.[0].id')
+      if [[ -z "$pipeline_id" || "$pipeline_id" == "null" ]]; then
+          echo "No pipeline found for ref '${ref:-<any>}'" >&2
+          return 1
+      fi
+      echo "Pipeline: ${pipeline_id}"
+
+      local failed_jobs
+      failed_jobs=$(curl --silent --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+          "https://${GITLAB_HOST}/api/v4/projects/${project_id}/pipelines/${pipeline_id}/jobs" \
+          | jq -c '[.[] | select(.status=="failed")]')
+
+      local n
+      n=$(echo "$failed_jobs" | jq 'length')
+      if [[ "$n" -eq 0 ]]; then
+          echo "No failed jobs in pipeline ${pipeline_id}."
+          return 0
+      fi
+
+      local job_ids job_names
+      mapfile -t job_ids < <(echo "$failed_jobs" | jq -r '.[].id')
+      mapfile -t job_names < <(echo "$failed_jobs" | jq -r '.[].name')
+
+      local i
+      for i in "${!job_ids[@]}"; do
+          echo
+          echo "=== FAILED: ${job_names[$i]} (job ${job_ids[$i]}) ==="
+          curl --silent --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+               "https://${GITLAB_HOST}/api/v4/projects/${project_id}/jobs/${job_ids[$i]}/trace"
+      done
+  }
+  export -f gitlab_last_failure
