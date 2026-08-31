@@ -1308,3 +1308,68 @@ with open('$temp2', 'w') as f:
       done
   }
   export -f gitlab_last_failure
+
+  # create a new runner via the GitLab Runners API and print the
+  # response (includes the one-time authentication token, glrt-...,
+  # needed by gitlab_register_runner below). Registration tokens were
+  # removed in GitLab 18.0 -- this is the only workflow that still
+  # works. runner_type is one of project_type/group_type/instance_type;
+  # target_id is the project or group id (omit/pass "" for
+  # instance_type). Needs a token with the manage_runner (or api)
+  # scope, not just read_api -- gitlab_pipelines/gitlab_lint's token
+  # may not be enough on its own. Set GITLAB_HOST/GITLAB_TOKEN first.
+  gitlab_create_runner() {
+      local runner_type="${1:?usage: gitlab_create_runner <project_type|group_type|instance_type> <target-id-or-empty> <description> [tag_list] [run_untagged]}"
+      local target_id="${2:-}"
+      local description="${3:?description required}"
+      local tag_list="${4:-}"
+      local run_untagged="${5:-false}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      local data=(--data "runner_type=${runner_type}" --data "description=${description}" --data "run_untagged=${run_untagged}")
+      case "$runner_type" in
+          project_type) data+=(--data "project_id=${target_id}") ;;
+          group_type)   data+=(--data "group_id=${target_id}") ;;
+          instance_type) ;;
+          *) echo "unknown runner_type: ${runner_type} (want project_type|group_type|instance_type)" >&2; return 1 ;;
+      esac
+      [[ -n "$tag_list" ]] && data+=(--data "tag_list=${tag_list}")
+
+      echo "NOTE: the 'token' field below (glrt-...) is shown once here --" >&2
+      echo "save it now, GitLab will not show it again." >&2
+
+      curl --silent --request POST "${data[@]}" \
+           --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+           "https://${GITLAB_HOST}/api/v4/user/runners" \
+        | jq .
+  }
+  export -f gitlab_create_runner
+
+  # register a runner locally using an authentication token from
+  # gitlab_create_runner (or the GitLab UI's "New runner" page). Runs
+  # gitlab-runner register on THIS host -- for a shell executor that
+  # needs real host access, run this on the actual target machine, not
+  # wherever you happen to be calling gitlab_create_runner from.
+  # Needs sudo for system-mode registration (writes to
+  # /etc/gitlab-runner/config.toml); without sudo it registers under
+  # the invoking user's own config instead. Extra args after
+  # description are passed through to gitlab-runner register as-is
+  # (e.g. --tag-list "esgf-deploy" --locked=false --run-untagged=false).
+  # Set GITLAB_HOST first.
+  gitlab_register_runner() {
+      local token="${1:?usage: gitlab_register_runner <auth-token> <executor> <description> [extra register args...]}"
+      local executor="${2:?usage: gitlab_register_runner <auth-token> <executor> <description> [extra register args...]}"
+      local description="${3:?description required}"
+      shift 3
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+
+      sudo gitlab-runner register \
+          --non-interactive \
+          --url "https://${GITLAB_HOST}" \
+          --token "${token}" \
+          --executor "${executor}" \
+          --description "${description}" \
+          "$@"
+  }
+  export -f gitlab_register_runner
