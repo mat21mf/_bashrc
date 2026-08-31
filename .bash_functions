@@ -1195,3 +1195,20 @@ with open('$temp2', 'w') as f:
     echo "  done. backup saved to $file.bak"
   }
   export -f replace_special_chars
+
+  # lint gitlab ci pipeline file in gitlab.earth.bsc.es
+  gitlab_lint() {
+      local yaml_file="${1:-.gitlab-ci.yml}"
+      local project_id="${2:?usage: gitlab_lint <path-to-yaml> <project-id>}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      python3 -c "import json; print(json.dumps({'content': open('$yaml_file').read()}))" \
+        | curl --silent \
+               --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+               --header "Content-Type: application/json" \
+               --data @- \
+               "https://${GITLAB_HOST}/api/v4/projects/${project_id}/ci/lint" \
+        | jq .
+  }
+  export -f gitlab_lint
