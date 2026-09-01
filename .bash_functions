@@ -1373,3 +1373,90 @@ with open('$temp2', 'w') as f:
           "$@"
   }
   export -f gitlab_register_runner
+
+  # list runners visible to the authenticated user, optionally filtered
+  # by tag. Shows id/description/active/is_shared/ip_address -- use to
+  # find a runner_id before gitlab_enable_runner_for_project or
+  # gitlab_project_runners. Set GITLAB_HOST/GITLAB_TOKEN first.
+  gitlab_list_runners() {
+      local tag="${1:-}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      local url="https://${GITLAB_HOST}/api/v4/runners?per_page=50"
+      [[ -n "$tag" ]] && url="${url}&tag_list=${tag}"
+
+      curl --silent --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "$url" \
+        | jq '[.[] | {id, description, active, is_shared, ip_address}]'
+  }
+  export -f gitlab_list_runners
+
+  # full detail for a single runner id -- locked/run_untagged flags,
+  # full tag_list, OS platform/architecture, and the list of projects
+  # it's currently enabled for. Note: the GitLab API does NOT expose
+  # executor type (shell vs docker vs ...) -- that's local to the
+  # runner's own config.toml on the host, not GitLab-visible. Confirming
+  # shell-vs-docker requires shell access to the host running the
+  # runner (see node-deploy/diagnostics/check-gitlab-runner-persistence.sh),
+  # not this function. Set GITLAB_HOST/GITLAB_TOKEN first.
+  gitlab_runner_details() {
+      local runner_id="${1:?usage: gitlab_runner_details <runner-id>}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      curl --silent --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+           "https://${GITLAB_HOST}/api/v4/runners/${runner_id}" \
+        | jq '{id, description, locked, run_untagged, tag_list, platform, architecture, projects: [.projects[]? | {id, name}]}'
+  }
+  export -f gitlab_runner_details
+
+  # list the runners currently enabled for a project -- the API
+  # equivalent of Settings -> CI/CD -> Runners on a project. Set
+  # GITLAB_HOST/GITLAB_TOKEN first.
+  gitlab_project_runners() {
+      local project_id="${1:?usage: gitlab_project_runners <project-id>}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      curl --silent --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+           "https://${GITLAB_HOST}/api/v4/projects/${project_id}/runners" \
+        | jq '[.[] | {id, description, active, tag_list}]'
+  }
+  export -f gitlab_project_runners
+
+  # enable an existing, unlocked runner for an additional project --
+  # the API equivalent of the Settings -> CI/CD -> Runners "Enable for
+  # this project" button. Only works if the runner's locked flag is
+  # false (check with gitlab_runner_details first); a locked runner
+  # returns a 4xx here and must be unlocked in the UI/API first. Set
+  # GITLAB_HOST/GITLAB_TOKEN first.
+  gitlab_enable_runner_for_project() {
+      local project_id="${1:?usage: gitlab_enable_runner_for_project <project-id> <runner-id>}"
+      local runner_id="${2:?usage: gitlab_enable_runner_for_project <project-id> <runner-id>}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      curl --silent --request POST \
+           --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+           --header "Content-Type: application/json" \
+           --data "{\"runner_id\": ${runner_id}}" \
+           "https://${GITLAB_HOST}/api/v4/projects/${project_id}/runners" \
+        | jq .
+  }
+  export -f gitlab_enable_runner_for_project
+
+  # inverse of gitlab_enable_runner_for_project -- unassign a runner
+  # from a project without deleting the runner itself. Set GITLAB_HOST/
+  # GITLAB_TOKEN first.
+  gitlab_disable_runner_for_project() {
+      local project_id="${1:?usage: gitlab_disable_runner_for_project <project-id> <runner-id>}"
+      local runner_id="${2:?usage: gitlab_disable_runner_for_project <project-id> <runner-id>}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      curl --silent --request DELETE \
+           --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+           "https://${GITLAB_HOST}/api/v4/projects/${project_id}/runners/${runner_id}"
+      echo "requested removal of runner ${runner_id} from project ${project_id}"
+  }
+  export -f gitlab_disable_runner_for_project
