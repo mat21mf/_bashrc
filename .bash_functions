@@ -1460,3 +1460,33 @@ with open('$temp2', 'w') as f:
       echo "requested removal of runner ${runner_id} from project ${project_id}"
   }
   export -f gitlab_disable_runner_for_project
+
+  # trigger a pipeline run via the API -- the equivalent of the
+  # "Run pipeline" (web-source) button, without opening the UI. Prints
+  # the new pipeline's id/status/web_url; follow up with
+  # gitlab_pipelines/gitlab_last_failure to check on it. Extra args are
+  # CI/CD variables as key=value pairs, passed through as
+  # variables[key]=value form fields (e.g. to override a job's
+  # variables: block for this one run). Set GITLAB_HOST/GITLAB_TOKEN
+  # first.
+  gitlab_run_pipeline() {
+      local project_id="${1:?usage: gitlab_run_pipeline <project-id> <ref> [key=value ...]}"
+      local ref="${2:?usage: gitlab_run_pipeline <project-id> <ref> [key=value ...]}"
+      shift 2
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      local form=(--data-urlencode "ref=${ref}")
+      local kv
+      for kv in "$@"; do
+          form+=(--data-urlencode "variables[][key]=${kv%%=*}")
+          form+=(--data-urlencode "variables[][value]=${kv#*=}")
+      done
+
+      curl --silent --request POST \
+           --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+           "${form[@]}" \
+           "https://${GITLAB_HOST}/api/v4/projects/${project_id}/pipeline" \
+        | jq '{id, status, web_url, ref}'
+  }
+  export -f gitlab_run_pipeline
