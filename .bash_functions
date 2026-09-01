@@ -1461,17 +1461,22 @@ with open('$temp2', 'w') as f:
   }
   export -f gitlab_disable_runner_for_project
 
-  # trigger a pipeline run via the API -- the equivalent of the
-  # "Run pipeline" (web-source) button, without opening the UI. On
-  # success prints the new pipeline's id/status/web_url/ref. On
-  # failure (bad ref, insufficient token scope -- creating a pipeline
-  # needs a token with 'api' scope, read_api is not enough -- disabled
-  # CI/CD, etc.) prints the HTTP status and GitLab's raw error body
-  # instead of silently returning nulls for fields an error response
-  # doesn't have. Follow up with gitlab_pipelines/gitlab_last_failure
-  # to check on a successful run. Extra args are CI/CD variables as
-  # key=value pairs, passed through as variables[][key]/[value] form
-  # fields. Set GITLAB_HOST/GITLAB_TOKEN first.
+  # trigger a pipeline run via the API. NOT the same as the "Run
+  # pipeline" web button -- GitLab reports this as CI_PIPELINE_SOURCE
+  # "api", a distinct value from "web". A pipeline's workflow:rules
+  # must explicitly allow "api" (in addition to push/web/
+  # merge_request_event/etc.) or this fails with HTTP 400 ("The
+  # pipeline did not run. Review the workflow:rules configuration").
+  # On success prints the new pipeline's id/status/web_url/ref. On
+  # failure (bad ref, missing 'api' in workflow:rules, insufficient
+  # token scope -- creating a pipeline needs a token with 'api' scope,
+  # read_api is not enough -- disabled CI/CD, etc.) prints the HTTP
+  # status and GitLab's raw error body instead of silently returning
+  # nulls for fields an error response doesn't have. Follow up with
+  # gitlab_pipelines/gitlab_last_failure to check on a successful run.
+  # Extra args are CI/CD variables as key=value pairs, passed through
+  # as variables[][key]/[value] form fields. Set GITLAB_HOST/
+  # GITLAB_TOKEN first.
   gitlab_run_pipeline() {
       local project_id="${1:?usage: gitlab_run_pipeline <project-id> <ref> [key=value ...]}"
       local ref="${2:?usage: gitlab_run_pipeline <project-id> <ref> [key=value ...]}"
