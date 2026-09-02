@@ -1509,3 +1509,36 @@ with open('$temp2', 'w') as f:
       fi
   }
   export -f gitlab_run_pipeline
+
+  ### Carga secretos locales (no versionados)
+  CargarSecretos() {
+      local dir="${HOME}/.config/secrets"
+      [ -d "$dir" ] || return 0
+      local f
+      for f in "$dir"/*.env; do
+          [ -r "$f" ] && source "$f"
+      done
+  }
+  CargarSecretos
+  export -f CargarSecretos
+
+  ### Comprueba si un conjunto de variables de entorno esta definido
+  ComprobarSecretos() {
+      local var ok=0
+      for var in "$@"; do
+          if [ -z "${!var}" ]; then
+              echo "  [ ] $var (no definida)"
+              ok=1
+          else
+              echo "  [x] $var"
+          fi
+      done
+      return $ok
+  }
+  export -f ComprobarSecretos
+
+  ### Atajo especifico para gitlab.earth.bsc.es
+  EstadoGitlab() {
+      ComprobarSecretos GITLAB_HOST GITLAB_TOKEN
+  }
+  export -f EstadoGitlab
