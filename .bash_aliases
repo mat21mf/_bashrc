@@ -16,9 +16,6 @@ alias jq='jq -C'
 #### less
 export LESS='-R'
 
-### yt-dlp youtube-dl
-alias yt-dlp="yt-dlp --continue --restrict-filenames -o '%(upload_date)s_%(title)s.%(ext)s'"
-
 ### tmuxinator
 alias mux=tmuxinator
 
@@ -40,10 +37,6 @@ export LUALATEX
 
 ### pdfsizeopt
 alias pdfsizeopt='pdfsizeopt --use-pngout=no --use-jbig2=true --do-unify-fonts=false'
-
-### youtube-dl
-alias youtube-dl="youtube-dl --continue --restrict-filenames -o '%(upload_date)s_%(title)s.%(ext)s'"
-alias yt-dlp="yt-dlp --continue --restrict-filenames -o '%(upload_date)s_%(title)s.%(ext)s'"
 
 ### kubectl
 alias kubectl="minikube kubectl --"
