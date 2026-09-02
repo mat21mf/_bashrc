@@ -1,0 +1,3 @@
+--continue
+--restrict-filenames
+-o %(upload_date)s_%(title)s.%(ext)s
