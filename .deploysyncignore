@@ -34,3 +34,4 @@ config-bashrc.sh
 .local/bin/XlsxAParquet.R
 .local/bin/XlsxARds.R
 .local/bin/XlsxGetSheets.R
+.deploysyncroot
