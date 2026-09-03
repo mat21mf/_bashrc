@@ -1510,6 +1510,41 @@ with open('$temp2', 'w') as f:
   }
   export -f gitlab_run_pipeline
 
+  # trigger a manual (when: manual) job via the API -- the same action
+  # as clicking a pipeline's Play button in the web UI, not a
+  # separate trigger source (unlike gitlab_run_pipeline's "api" vs
+  # "web" distinction, this endpoint doesn't create a new
+  # CI_PIPELINE_SOURCE value). Get the job id from
+  # gitlab_pipeline_jobs first -- only jobs currently in "manual"
+  # status can be played; anything else returns an error. On success
+  # prints the job's id/name/status/web_url. On failure (job not
+  # manual, wrong id, insufficient token scope) prints the HTTP status
+  # and GitLab's raw error body. Follow up with gitlab_job_trace to
+  # watch it run. Set GITLAB_HOST/GITLAB_TOKEN first.
+  gitlab_play_job() {
+      local project_id="${1:?usage: gitlab_play_job <project-id> <job-id>}"
+      local job_id="${2:?usage: gitlab_play_job <project-id> <job-id>}"
+      : "${GITLAB_HOST:?GITLAB_HOST not set (e.g. export GITLAB_HOST=gitlab.example.com)}"
+      : "${GITLAB_TOKEN:?GITLAB_TOKEN not set}"
+
+      local response http_status body
+      response=$(curl --silent --request POST \
+           --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+           --write-out '\nHTTP_STATUS:%{http_code}' \
+           "https://${GITLAB_HOST}/api/v4/projects/${project_id}/jobs/${job_id}/play")
+      http_status="${response##*HTTP_STATUS:}"
+      body="${response%$'\n'HTTP_STATUS:*}"
+
+      if [[ "$http_status" -ge 200 && "$http_status" -lt 300 ]]; then
+          echo "$body" | jq '{id, name, status, web_url}'
+      else
+          echo "gitlab_play_job failed: HTTP ${http_status}" >&2
+          echo "$body" | jq . >&2
+          return 1
+      fi
+  }
+  export -f gitlab_play_job
+
   ### Carga secretos locales (no versionados)
   CargarSecretos() {
       local dir="${HOME}/.config/secrets"
