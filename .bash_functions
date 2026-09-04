@@ -1656,8 +1656,59 @@ print(json.dumps({'op': '=', 'args': [{'property': f'properties.{prop}'}, val]})
   }
   export -f ComprobarSecretos
 
+  # Generic helper (English, new addition -- the Spanish
+  # Cargar/Comprobar/Estado trio above is left as-is; renaming those is
+  # cosmetic and out of scope here). Lists the variable names an env
+  # file under ~/.config/secrets/ (bare filename) or at a full path
+  # declares -- lines of the form "export VAR=..." or "VAR=...",
+  # comments/blank lines ignored. A building block for
+  # secrets_file_status below, but useful standalone too (e.g. to see
+  # what a new .env file would add before sourcing it).
+  secrets_file_vars() {
+      local file="${1:?usage: secrets_file_vars <filename-in-\$HOME/.config/secrets-or-full-path>}"
+      [[ "$file" == /* ]] || file="${HOME}/.config/secrets/${file}"
+      if [[ ! -r "$file" ]]; then
+          echo "cannot read $file" >&2
+          return 1
+      fi
+      grep -E '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=' "$file" \
+        | sed -E 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=.*/\2/'
+  }
+  export -f secrets_file_vars
+
+  # Checks every variable a given secrets env file declares against
+  # the CURRENT environment (i.e. whatever CargarSecretos already
+  # sourced), via the existing ComprobarSecretos. This is the generic
+  # form EstadoGitlab already was a one-off, hardcoded example of --
+  # any *.env file dropped into ~/.config/secrets/ can be checked this
+  # way without writing a new Estado* wrapper for it, though a thin
+  # wrapper (see EstadoEsgfStac below) is still nice for a name you'll
+  # type often.
+  secrets_file_status() {
+      local file="${1:?usage: secrets_file_status <filename-in-\$HOME/.config/secrets-or-full-path>}"
+      local vars
+      vars=$(secrets_file_vars "$file") || return 1
+      if [[ -z "$vars" ]]; then
+          echo "no variables found in $file" >&2
+          return 1
+      fi
+      # word-splitting into ComprobarSecretos's "$@" list is intended here
+      # shellcheck disable=SC2086
+      ComprobarSecretos $vars
+  }
+  export -f secrets_file_status
+
   ### Atajo especifico para gitlab.earth.bsc.es
   EstadoGitlab() {
       ComprobarSecretos GITLAB_HOST GITLAB_TOKEN
   }
   export -f EstadoGitlab
+
+  # Mirrors EstadoGitlab above, for ~/.config/secrets/esgf-stac.env
+  # (ESGF_STAC_API and anything else added to that file later --
+  # secrets_file_status picks up new vars in the file automatically,
+  # nothing here needs updating when the file grows).
+  EstadoEsgfStac() {
+      secrets_file_status esgf-stac.env
+  }
+  export -f EstadoEsgfStac
