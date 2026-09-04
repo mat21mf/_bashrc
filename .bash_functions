@@ -1545,6 +1545,90 @@ with open('$temp2', 'w') as f:
   }
   export -f gitlab_play_job
 
+  # Query an ESGF-NG STAC Discovery API. Unlike the gitlab_* functions
+  # above, these are read-only search endpoints and are public -- no
+  # token needed, ESGF_STAC_API just points at a base URL (e.g.
+  # https://discovery.east.esgf.io or the -int staging variant).
+  # Override per-call with a trailing/positional base-url arg instead
+  # of the env var where noted.
+
+  # self-describing landing page (conformance classes, links) -- good
+  # first call against an API you haven't queried before.
+  esgf_stac_landing() {
+      local stac_api="${1:-}"
+      if [[ -z "$stac_api" ]]; then
+          : "${ESGF_STAC_API:?usage: esgf_stac_landing [stac-api-base-url] (or export ESGF_STAC_API=https://discovery.east.esgf.io)}"
+          stac_api="$ESGF_STAC_API"
+      fi
+      curl --silent "${stac_api%/}/" | jq .
+  }
+  export -f esgf_stac_landing
+
+  # list every collection (project) currently indexed by the catalog.
+  esgf_stac_collections() {
+      local stac_api="${1:-}"
+      if [[ -z "$stac_api" ]]; then
+          : "${ESGF_STAC_API:?usage: esgf_stac_collections [stac-api-base-url] (or export ESGF_STAC_API=https://discovery.east.esgf.io)}"
+          stac_api="$ESGF_STAC_API"
+      fi
+      curl --silent "${stac_api%/}/collections" | jq '[.collections[] | {id, title}]'
+  }
+  export -f esgf_stac_collections
+
+  # item search scoped to one or more collections (comma-separated,
+  # STAC's OR syntax -- e.g. "CMIP7" or "CMIP7,CMIP6Plus"). Prints just
+  # id/collection/datetime per item plus the next-page token, not the
+  # full item bodies -- pipe the same curl through `jq .` yourself for
+  # everything.
+  esgf_stac_search() {
+      local collections="${1:?usage: esgf_stac_search <collections> [limit] [stac-api-base-url]}"
+      local limit="${2:-10}"
+      local stac_api="${3:-}"
+      if [[ -z "$stac_api" ]]; then
+          : "${ESGF_STAC_API:?ESGF_STAC_API not set (e.g. export ESGF_STAC_API=https://discovery.east.esgf.io) or pass as 3rd arg}"
+          stac_api="$ESGF_STAC_API"
+      fi
+      curl --silent -G "${stac_api%/}/search" \
+           --data-urlencode "collections=${collections}" \
+           --data-urlencode "limit=${limit}" \
+        | jq '{numberReturned: (.features | length),
+               next: ([.links[]? | select(.rel == "next") | .href][0]),
+               items: [.features[]? | {id, collection, datetime: .properties.datetime}]}'
+  }
+  export -f esgf_stac_search
+
+  # item search filtered on a single item property via STAC's Filter
+  # Extension (CQL2-JSON), e.g.:
+  #   esgf_stac_filter CMIP7 source_id UKESM1-0-LL
+  # property is matched under properties.<property> -- for nested/other
+  # forms, build the filter JSON by hand and call the API directly
+  # instead. Prints matching items' full properties, not just id/date,
+  # since the point here is inspecting real published field values.
+  esgf_stac_filter() {
+      local collections="${1:?usage: esgf_stac_filter <collections> <property> <value> [limit] [stac-api-base-url]}"
+      local property="${2:?usage: esgf_stac_filter <collections> <property> <value> [limit] [stac-api-base-url]}"
+      local value="${3:?usage: esgf_stac_filter <collections> <property> <value> [limit] [stac-api-base-url]}"
+      local limit="${4:-10}"
+      local stac_api="${5:-}"
+      if [[ -z "$stac_api" ]]; then
+          : "${ESGF_STAC_API:?ESGF_STAC_API not set (e.g. export ESGF_STAC_API=https://discovery.east.esgf.io) or pass as 5th arg}"
+          stac_api="$ESGF_STAC_API"
+      fi
+      local filter_json
+      filter_json=$(python3 -c "
+import json, sys
+prop, val = sys.argv[1], sys.argv[2]
+print(json.dumps({'op': '=', 'args': [{'property': f'properties.{prop}'}, val]}))
+" "$property" "$value")
+      curl --silent -G "${stac_api%/}/search" \
+           --data-urlencode "collections=${collections}" \
+           --data-urlencode "limit=${limit}" \
+           --data-urlencode "filter=${filter_json}" \
+           --data-urlencode "filter-lang=cql2-json" \
+        | jq '{numberReturned: (.features | length), items: [.features[]? | {id, collection, properties}]}'
+  }
+  export -f esgf_stac_filter
+
   ### Carga secretos locales (no versionados)
   CargarSecretos() {
       local dir="${HOME}/.config/secrets"
