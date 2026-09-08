@@ -39,15 +39,23 @@ subtree with large non-deployable data alongside it: point .deploysyncroot
 at just "tools/=~/.local/bin" and the rest of the repo is automatically
 left alone.
 
-Every git-tracked, non-ignored, in-scope file's actual content is compared
-against its deployed counterpart on every run - not commit history. A
-file is "pending" for exactly as long as its content differs from what's
-deployed, full stop. Answering [n] to skip it just means "not this run" -
+Every git-tracked, non-ignored, in-scope file's actual content AND
+executable bit are compared against its deployed counterpart on every
+run - not commit history. A file is "pending" for exactly as long as
+its content differs, or whether it's executable differs, from what's
+deployed, full stop. A content-identical file whose only difference is
+the executable bit shows up labeled [MODE] instead of [CHANGED], with
+"(content unchanged - gained/lost the executable bit)" in place of a
+diff, since a real diff would show nothing. "Executable" here means
+any of the owner/group/other exec bits are set - exact permission
+parity (755 vs 775) isn't required, only that both sides agree on
+runnable-or-not. Answering [n] to skip it just means "not this run" -
 it stays pending and gets offered again next time, and the time after
 that, until you either apply it or add it to .deploysyncignore. There is
 no memory of past skip decisions and nothing advances silently; the only
-way a file stops being offered is if its content actually matches, it's
-out of scope per .deploysyncroot, or you choose to ignore it.
+way a file stops being offered is if its content and executable bit
+actually match, it's out of scope per .deploysyncroot, or you choose to
+ignore it.
 
   --since REF   Optional extra narrowing: only consider files touched by
                 a commit since REF (any commit/tag/branch), in addition
@@ -237,11 +245,31 @@ def candidate_files(repo_root: Path, since_ref: str | None) -> list[str]:
     return [line for line in out.splitlines() if line]
 
 
-def show_diff(dest_path: Path, src_path: Path):
-    if dest_path.exists():
-        subprocess.run(["diff", "-u", "--color=always", str(dest_path), str(src_path)])
-    else:
+def is_executable(path: Path) -> bool:
+    """True if any of the owner/group/other exec bits are set - the same
+    "does this look executable" notion ensure_executable() below cares
+    about, not exact permission-bit parity (e.g. 755 vs 775 both count
+    as executable and are treated as equal)."""
+    return bool(path.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+
+
+def mode_change_description(src_path: Path, dest_path: Path) -> str:
+    src_exec, dest_exec = is_executable(src_path), is_executable(dest_path)
+    if src_exec and not dest_exec:
+        return "gained the executable bit"
+    if not src_exec and dest_exec:
+        return "lost the executable bit"
+    return "executable bit unchanged"  # shouldn't be reached when mode_only
+
+
+def show_diff(dest_path: Path, src_path: Path, mode_only: bool = False):
+    if not dest_path.exists():
         print(f"(not currently deployed - would create {dest_path}, {src_path.stat().st_size} bytes)")
+        return
+    if mode_only:
+        print(f"(content unchanged - {mode_change_description(src_path, dest_path)})")
+        return
+    subprocess.run(["diff", "-u", "--color=always", str(dest_path), str(src_path)])
 
 
 def ensure_executable(dest_path: Path):
@@ -268,12 +296,12 @@ def ensure_executable(dest_path: Path):
         print(f"    chmod +x (shebang detected, source lacked exec bit)")
 
 
-def apply_change(src_path: Path, dest_path: Path, tool: str | None, do_backup: bool):
+def apply_change(src_path: Path, dest_path: Path, tool: str | None, do_backup: bool, mode_only: bool = False):
     if dest_path.exists():
         if do_backup:
             print(f"    {backup_file(dest_path, tool)}")
         shutil.copy2(src_path, dest_path)
-        print(f"  Applied (overwritten): {dest_path}")
+        print(f"  Applied (mode only): {dest_path}" if mode_only else f"  Applied (overwritten): {dest_path}")
     else:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_path, dest_path)
@@ -281,8 +309,16 @@ def apply_change(src_path: Path, dest_path: Path, tool: str | None, do_backup: b
     ensure_executable(dest_path)
 
 
-def prompt(rel: str, is_new: bool) -> str:
-    label = "NEW" if is_new else "CHANGED"
+def pending_label(is_new: bool, mode_only: bool) -> str:
+    if is_new:
+        return "NEW"
+    if mode_only:
+        return "MODE"
+    return "CHANGED"
+
+
+def prompt(rel: str, is_new: bool, mode_only: bool = False) -> str:
+    label = pending_label(is_new, mode_only)
     while True:
         choice = input(
             f"[{label}] {rel} -- apply? [y]es/[n]o/[d]iff/[a]ll remaining/[q]uit: "
@@ -315,7 +351,7 @@ def main() -> int:
     globs = load_ignore_globs(repo_root, args.include_meta, args.exclude)
     rels = [r for r in rels if not is_ignored(r, globs)]
 
-    pending = []  # (rel, src_path, dest_path, is_new)
+    pending = []  # (rel, src_path, dest_path, is_new, mode_only)
     up_to_date = 0
     out_of_scope = 0
     for rel in sorted(rels):
@@ -326,10 +362,15 @@ def main() -> int:
         src_path = repo_root / rel
         if not src_path.is_file():
             continue  # deleted in a diff range, nothing to deploy
-        if dest_path.exists() and filecmp.cmp(src_path, dest_path, shallow=False):
-            up_to_date += 1
-            continue
-        pending.append((rel, src_path, dest_path, not dest_path.exists()))
+        mode_only = False
+        if dest_path.exists():
+            content_same = filecmp.cmp(src_path, dest_path, shallow=False)
+            mode_same = is_executable(src_path) == is_executable(dest_path)
+            if content_same and mode_same:
+                up_to_date += 1
+                continue
+            mode_only = content_same and not mode_same
+        pending.append((rel, src_path, dest_path, not dest_path.exists(), mode_only))
 
     scope = "all tracked files" if args.since is None else f"tracked files changed since {args.since}"
     print(f"Repo: {repo_root}")
@@ -351,8 +392,8 @@ def main() -> int:
         return 0
 
     if args.dry_run:
-        for rel, _src, _dest, is_new in pending:
-            print(f"[{'NEW' if is_new else 'CHANGED'}] {rel}")
+        for rel, _src, _dest, is_new, mode_only in pending:
+            print(f"[{pending_label(is_new, mode_only)}] {rel}")
         print("\n(dry run - nothing applied)")
         return 0
 
@@ -364,13 +405,13 @@ def main() -> int:
     self_updated = False
 
     apply_all = args.yes
-    for rel, src_path, dest_path, is_new in pending:
+    for rel, src_path, dest_path, is_new, mode_only in pending:
         if not apply_all:
-            show_diff(dest_path, src_path)
-            choice = prompt(rel, is_new)
+            show_diff(dest_path, src_path, mode_only)
+            choice = prompt(rel, is_new, mode_only)
             while choice == "d":
-                show_diff(dest_path, src_path)
-                choice = prompt(rel, is_new)
+                show_diff(dest_path, src_path, mode_only)
+                choice = prompt(rel, is_new, mode_only)
             if choice == "q":
                 print("Stopping, no further changes applied.")
                 break
@@ -379,7 +420,7 @@ def main() -> int:
             elif choice != "y":
                 print(f"  Skipped: {rel} (will be offered again next run)")
                 continue
-        apply_change(src_path, dest_path, tool, do_backup=not args.no_backup)
+        apply_change(src_path, dest_path, tool, do_backup=not args.no_backup, mode_only=mode_only)
         if dest_path.resolve() == self_path:
             self_updated = True
 
