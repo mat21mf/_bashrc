@@ -68,6 +68,7 @@ Rendering / docs:
 | `Render.R` / `RenderHtml.R` | Render R Markdown            |
 | `Purl.R`             | Extract R code from an Rmd        |
 | `rmdtags.py`         | Rmd tag helpers                   |
+| `md_to_pdf.py`       | Markdown to PDF via headless Chromium (VS Code Markdown PDF equivalent) |
 
 Misc:
 
