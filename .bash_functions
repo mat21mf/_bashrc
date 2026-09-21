@@ -988,6 +988,37 @@
   }
   export -f vdiff_varlist_count
 
+  function vdiff_cmds () {
+    # Abre vimdiff sobre la salida de dos comandos pasados como
+    # redirecciones de proceso, sin perder el contenido del pipe.
+    #
+    # Uso:   vdiff_cmds <(comando1) <(comando2) [extension]
+    # Ej.:   vdiff_cmds <(jq -S . a.json) <(jq -S . b.json) json
+    #
+    # Bash expande <(...) a /dev/fd/N, un pipe que solo se puede leer una
+    # vez. Cada uno se vuelca aqui a un archivo temporal real, de modo que
+    # vim pueda releer, recargar (:e!) o escribir el buffer sin problemas.
+    # Los temporales se borran al salir de vimdiff.
+    #
+    # La extension opcional (json, yaml, md...) se agrega al nombre del
+    # temporal para que vim detecte el filetype y aplique syntax highlight.
+    if [[ $# -lt 2 || $# -gt 3 ]] ; then
+      echo "Uso: vdiff_cmds <(comando1) <(comando2) [extension]" >&2
+      return 1
+    fi
+    local f1 f2 sfx=""
+    [[ -n "${3}" ]] && sfx=".${3#.}"
+    f1=$(mktemp --suffix="$sfx") || return 1
+    f2=$(mktemp --suffix="$sfx") || { rm -f "$f1"; return 1; }
+    if ! { cat "$1" > "$f1" && cat "$2" > "$f2"; } ; then
+      rm -f "$f1" "$f2"
+      return 1
+    fi
+    vimdiff "$f1" "$f2"
+    rm -f "$f1" "$f2"
+  }
+  export -f vdiff_cmds
+
 compare_varlists() {
     # Compare two varlist JSON files with alphabetical sorting
     # Usage: compare_varlists file1.json file2.json [--vimdiff]
