@@ -67,7 +67,8 @@ ignore it.
 
 Only git-tracked files are considered (git ls-files), and repo bookkeeping
 files are skipped by default: README*, LICENSE*, CHANGELOG*, .gitattributes,
-.gitignore, *.patch. Use --include-meta to consider them too, or drop a
+.gitignore, .deploysyncignore, .deploysyncroot, *.patch. Use --include-meta
+to consider them too, or drop a
 .deploysyncignore file (one glob per line, matched against the path
 relative to repo root) at the repo root for per-repo customization.
 
@@ -117,7 +118,8 @@ from pathlib import Path
 
 DEFAULT_META_EXCLUDES = [
     "README*", "LICENSE*", "CHANGELOG*",
-    ".gitattributes", ".gitignore", ".deploysyncignore", "*.patch",
+    ".gitattributes", ".gitignore", ".deploysyncignore", ".deploysyncroot",
+    "*.patch",
 ]
 
 
