@@ -3,6 +3,9 @@
 # source ~/.bashrc
 alias so='echo "source ~/.bashrc" && source ~/.bashrc'
 
+# git
+alias gw='git whoami'
+
 # curl
 alias curl='curl -sSL'
 
