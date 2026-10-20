@@ -293,5 +293,11 @@ export PATH="$PATH:/home/$USER/.npm-global/bin"
 ## geoserver
 export GEOSERVER_HOME=/usr/share/geoserver
 
-## airflow
-export PATH="$PATH:~/.local/bin"
+## ~/.local/bin, user installed tools (pip --user, airflow, gh, git helpers).
+## Absolute path: a literal "~" in PATH only works for commands typed in
+## bash; git, env, python subprocess and other programs do not expand it.
+## First in PATH so a user installed gh wins over an older system one.
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
