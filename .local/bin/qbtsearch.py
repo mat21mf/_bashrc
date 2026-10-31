@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "qbtsearch", "last.json")
 CATEGORIES = ["all", "anime", "books", "games", "movies", "music", "pictures", "software", "tv"]
@@ -82,27 +83,91 @@ def btih(link):
     return m.group(1).lower() if m else None
 
 
-def run_nova(nova3, engines, category, query):
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8")
-    cmd = [sys.executable, "nova2.py", engines, category] + query
-    proc = subprocess.run(cmd, cwd=nova3, env=env, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, timeout=180)
-    err = proc.stderr.decode("utf-8", "replace").strip()
-    if err:
-        print(err, file=sys.stderr)
-    rows, seen = [], set()
-    for line in proc.stdout.decode("utf-8", "replace").splitlines():
-        parts = line.split("|")
-        if len(parts) < 6:
-            continue
-        link, name, size, seeds, leech, engine = parts[:6]
-        key = btih(link) or link
-        if key in seen:
-            continue
-        seen.add(key)
-        rows.append({"link": link, "name": name, "size": size, "seeds": to_int(seeds),
-                     "leech": to_int(leech), "engine": engine,
-                     "desc": parts[6] if len(parts) > 6 else ""})
+def qbt_ini(nova3):
+    """qBittorrent.ini that belongs to this nova3 dir (Local -> Roaming on Windows)."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(nova3)))  # .../AppData/Local
+    cands = [os.path.join(os.path.dirname(root), "Roaming", "qBittorrent", "qBittorrent.ini"),
+             os.path.join(os.environ.get("APPDATA", ""), "qBittorrent", "qBittorrent.ini"),
+             os.path.expanduser("~/.config/qBittorrent/qBittorrent.conf")]
+    for path in cands:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def disabled_engines(nova3):
+    """Engines disabled in the GUI (SearchEngines/disabledEngines)."""
+    path = qbt_ini(nova3)
+    if not path:
+        return set()
+    section = None
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if line.startswith("[") and line.endswith("]"):
+                section = line[1:-1]
+            elif section == "SearchEngines" and line.startswith("disabledEngines="):
+                value = line.split("=", 1)[1]
+                if value.startswith("@"):
+                    return set()
+                return {e.strip().strip('"') for e in value.split(",") if e.strip()}
+    return set()
+
+
+def nova_env():
+    return dict(os.environ, PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8")
+
+
+def list_engines(nova3, wanted):
+    if wanted != "all":
+        return [e.strip() for e in wanted.split(",") if e.strip()]
+    out = subprocess.run([sys.executable, "nova2.py", "--capabilities", "--names"], cwd=nova3, env=nova_env(),
+                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=60).stdout
+    names = [e for e in out.decode("utf-8", "replace").strip().split(",") if e]
+    off = disabled_engines(nova3)
+    return [e for e in names if e not in off]
+
+
+def run_engine(nova3, engine, category, query):
+    try:
+        proc = subprocess.run([sys.executable, "nova2.py", engine, category] + query, cwd=nova3,
+                              env=nova_env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              timeout=120)
+    except subprocess.TimeoutExpired:
+        return engine, "", "timeout"
+    return (engine, proc.stdout.decode("utf-8", "replace"),
+            proc.stderr.decode("utf-8", "replace").strip())
+
+
+def run_nova(nova3, engines, category, query, verbose):
+    names = list_engines(nova3, engines)
+    if not names:
+        sys.exit("qbtsearch: no engines to run")
+    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+        results = list(pool.map(lambda e: run_engine(nova3, e, category, query), names))
+    rows, seen, failed = [], set(), []
+    for engine, out, err in results:
+        count = 0
+        for line in out.splitlines():
+            parts = line.split("|")
+            if len(parts) < 6:
+                continue
+            count += 1
+            link, name, size, seeds, leech, origin = parts[:6]
+            key = btih(link) or link
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append({"link": link, "name": name, "size": size, "seeds": to_int(seeds),
+                         "leech": to_int(leech), "engine": origin,
+                         "desc": parts[6] if len(parts) > 6 else ""})
+        if err:
+            failed.append(engine)
+        if verbose:
+            print("[{0}] {1} results{2}".format(engine, count, (": " + err.splitlines()[-1]) if err else ""),
+                  file=sys.stderr)
+    if failed and not verbose:
+        print("qbtsearch: errors in {0} (use -v)".format(", ".join(failed)), file=sys.stderr)
     return rows
 
 
@@ -156,19 +221,20 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog=__doc__.split("Examples:")[1])
     ap.add_argument("query", nargs="*", help="search terms")
-    ap.add_argument("-e", "--engines", default="all", help="engine(s), comma separated (default: all installed)")
+    ap.add_argument("-e", "--engines", default="all", help="engine(s), comma separated (default: all enabled in the GUI)")
     ap.add_argument("-c", "--category", default="all", choices=CATEGORIES)
     ap.add_argument("-r", "--regex", help="case-insensitive regex the name must match")
     ap.add_argument("-x", "--exclude", help="case-insensitive regex the name must NOT match")
     ap.add_argument("-s", "--min-seeds", type=int, default=0)
     ap.add_argument("-n", "--limit", type=int, default=30, help="max rows shown (0 = all)")
+    ap.add_argument("-v", "--verbose", action="store_true", help="per-engine counts and errors")
     ap.add_argument("-w", "--wide", action="store_true", help="do not truncate names")
     ap.add_argument("-m", "--magnet", type=int, metavar="N", help="print link of result N")
     ap.add_argument("-o", "--open", type=int, metavar="N", help="open result N in qBittorrent")
     args = ap.parse_args()
 
     if args.query:
-        rows = run_nova(find_nova3(), args.engines, args.category, args.query)
+        rows = run_nova(find_nova3(), args.engines, args.category, args.query, args.verbose)
         if args.regex:
             rx = re.compile(args.regex, re.I)
             rows = [r for r in rows if rx.search(r["name"])]
