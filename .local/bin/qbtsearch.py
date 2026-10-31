@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlsplit
 
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "qbtsearch", "last.json")
 CATEGORIES = ["all", "anime", "books", "games", "movies", "music", "pictures", "software", "tv"]
@@ -204,12 +205,22 @@ def open_link(link):
         print(link)
 
 
+def short_engine(label):
+    """'Knaben Database(1337x)' -> '1337x', 'https://www.site.com/x' -> 'site.com'."""
+    if "(" in label:
+        label = label.split("(")[-1].rstrip(")")
+    host = urlsplit(label).hostname if "://" in label else None
+    if host:
+        label = host[4:] if host.startswith("www.") else host
+    return label
+
+
 def show(rows, wide):
     width = shutil.get_terminal_size((120, 20)).columns
     name_w = max(20, width - 32) if not wide else 10000
     print("{0:>3} {1:>6} {2:>9}  {3}".format("#", "seeds", "size", "name [engine]"))
     for i, r in enumerate(rows, 1):
-        engine = r["engine"].split("(")[-1].rstrip(")") if "(" in r["engine"] else r["engine"]
+        engine = short_engine(r["engine"])
         label = "{0} [{1}]".format(r["name"], engine)
         if len(label) > name_w:
             label = label[:name_w - 3] + "..."
