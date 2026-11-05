@@ -158,9 +158,12 @@ if ! shopt -oq posix; then
   fi
 fi
 
-###
-### Definiciones usuario
-###
+# Terminals on Windows paste line breaks as CRLF. bash older than 4.4
+[ -f ~/.bashrc.pastefix ] && . ~/.bashrc.pastefix
+
+#
+# User specific aliases and functions
+#
 
 # Functions definitions.
 if [ -f ~/.bash_functions ]; then

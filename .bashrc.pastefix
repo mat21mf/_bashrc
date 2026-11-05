@@ -1,0 +1,18 @@
+# ~/.bashrc.pastefix - Ignore the extra LF when pasting CRLF text into old bash
+# This file should be sourced from your main ~/.bashrc file.
+#
+# Problem: terminals on Windows (e.g. WezTerm) paste line breaks as CRLF.
+# bash < 4.4 (readline < 7.0, e.g. bash 4.3 on nord4) has no bracketed paste,
+# so it reads CR as Enter and LF (Ctrl-J) as a second Enter: every pasted
+# line is followed by an empty prompt.
+#
+# Fix: bind Ctrl-J to a harmless readline function. The Enter key sends CR
+# (Ctrl-M), so typing is unaffected. Only applied on bash < 4.4, interactive
+# shells; newer bash handles pastes with bracketed paste and keeps Ctrl-J.
+#
+# Trade-offs on old bash: Ctrl-J no longer submits the line, and pasted lines
+# still run one by one as they arrive (no "hold until Enter" like bash 4.4+).
+
+if [[ $- == *i* ]] && (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] < 404 )); then
+    bind '"\C-j": redraw-current-line'
+fi
